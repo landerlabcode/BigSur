@@ -15,4 +15,7 @@ Usage for feature selection is detailed in the [example notebook](https://github
 TL;DR:
 
     from BigSur.feature_selection import mcfano_feature_selection as mcfano
+
 Replace <code>sc.pp.highly_variable_genes(adata)</code> in your pipeline with <code>mcfano(adata, layer='counts')</code>
+
+And that's it! You can read more about usability and the functions we provide in the [example notebook](https://github.com/landerlabcode/BigSur/blob/main/feature_selection_example_usage.ipynb). 
