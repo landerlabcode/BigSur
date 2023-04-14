@@ -11,6 +11,8 @@ The only way to install BigSur currently is to clone the GitHub repo. We've incl
 
 # Usage
 Usage for feature selection is detailed in the [example notebook](https://github.com/landerlabcode/BigSur/blob/main/feature_selection_example_usage.ipynb). 
+
 TL;DR:
+
     from BigSur.feature_selection import mcfano_feature_selection as mcfano
 Replace <code>sc.pp.highly_variable_genes(adata)</code> in your pipeline with <code>mcfano(adata, layer='counts')</code>
