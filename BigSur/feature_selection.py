@@ -8,6 +8,7 @@ Created on Wed Oct  5 09:55:15 2022
 from typing import Union
 import time
 import numpy as np
+from scipy.optimize import brentq
 from anndata import AnnData
 from mpmath import ncdf, exp
 from statsmodels.stats.multitest import fdrcorrection
