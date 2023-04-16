@@ -5,21 +5,15 @@ Created on Wed Oct  5 09:55:15 2022
 
 @author: emmanueldollinger
 """
-from typing import Optional, Union
-import time
-import pandas as pd
 import numpy as np
-from anndata import AnnData
-from scipy.optimize import curve_fit, brentq
+from scipy.optimize import curve_fit
 from sklearn.utils.sparsefuncs import mean_variance_axis
-from mpmath import ncdf, exp
-from statsmodels.stats.multitest import fdrcorrection
 import numexpr as ne
 import warnings
 
 warnings.simplefilter('always', UserWarning)
 
-def make_vars_and_QC(adata, layer):
+def make_vars_and_qc(adata, layer):
     """Extracts raw_count_mat, means, variances, g_counts and does checks for QC fail and raw counts"""
     if layer == "X":
         raw_count_mat = adata.X.copy()
@@ -66,6 +60,7 @@ def calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts):
 
 
 def fit_cv(xdata, ydata, p0=0.5):
+    '''Fits CV to data.'''
     def expected_fano(x, c):
         return 1 + x * c * c
 
