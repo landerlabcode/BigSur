@@ -6,7 +6,7 @@ Created on Wed Oct  5 09:55:15 2022
 @author: emmanueldollinger
 """
 import numpy as np
-from scipy.optimize import curve_fit
+from scipy.stats import linregress
 from sklearn.utils.sparsefuncs import mean_variance_axis
 import numexpr as ne
 import warnings
@@ -37,11 +37,6 @@ def make_vars_and_qc(adata, layer):
 def calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts):
     """This function calculates the corrected fano factors"""
     # Estimate the coefficient of variation if one is not supplied
-    if not isinstance(cv, float):
-        unmod_fanos = variances / means
-        cv = fit_cv(xdata=means, ydata=unmod_fanos)
-    if verbose > 1:
-        print(f"Using a coefficient of variation of {cv:.4}.")
 
     # Correcting for differential read depth among cells (calculating cell-specific expected gene means)
     total_umi = np.array(raw_count_mat.sum(axis=1)).flatten()
@@ -59,11 +54,48 @@ def calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts):
     return cv, normlist, residuals, n_cells
 
 
-def fit_cv(xdata, ydata, p0=0.5):
-    '''Fits CV to data.'''
-    def expected_fano(x, c):
-        return 1 + x * c * c
+def fit_cv(raw_count_mat, means, variances, g_counts, verbose):
+    '''Fits CV to genes with means > 0.01 and means < 10. Slope of linear fit in mcFano vs mean should be 0, so try different CVs and pick the CV with slope closest to zero.'''
 
-    init_fit, _ = curve_fit(f=expected_fano, xdata=xdata, ydata=ydata, p0=p0)
-    cv = init_fit[0]
+    log_vec = np.logical_and(means > 0.01 , means < 10)
+    subset_means = means[log_vec]
+    subset_variances = variances[log_vec]
+    subset_g_counts = g_counts[log_vec]
+    subset_raw_count_mat = raw_count_mat[:, log_vec]
+
+    cv_store = 1.0
+    slope_store = 1.0
+    for cv_try in np.arange(0.05, 1.05, 0.05):
+        cv_try = np.round(cv_try, 3)
+        cv_try, normlist, residuals, n_cells = calculate_residuals(
+            cv_try, verbose, subset_raw_count_mat, subset_means, subset_variances, subset_g_counts
+        )
+
+        corrected_fanos = calculate_mcfano(residuals, n_cells)
+
+        fit_object = linregress(subset_means, corrected_fanos)
+
+        slope = fit_object[0]
+
+        if slope < 0:
+            if slope_store < np.abs(slope):
+                cv = cv_store
+            else:
+                cv = cv_try
+            if verbose > 1:
+                print(f"Using a coefficient of variation of {cv:.4}.")
+            return cv
+        else:
+            cv_store = cv_try
+            slope_store = slope
+    warnings.warn(
+                'CV cannot be fit in biological range -- this probably means that the dataset is composed of multiple celltypes. We recommend subsetting the celltypes and redoing CV fit. Setting CV = 0.5.')
+    cv = 0.5
     return cv
+
+def calculate_mcfano(residuals, n_cells):
+    squared_residuals = residuals**2
+    corrected_fanos = 1 / (n_cells - 1) * np.sum(squared_residuals, axis=0)
+    corrected_fanos = np.array(corrected_fanos).flatten()
+
+    return corrected_fanos

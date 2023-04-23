@@ -14,7 +14,7 @@ from mpmath import ncdf, exp
 from statsmodels.stats.multitest import fdrcorrection
 import numexpr as ne
 import warnings
-from .preprocessing import make_vars_and_qc, calculate_residuals
+from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano
 
 warnings.simplefilter('always', UserWarning)
 
@@ -36,11 +36,11 @@ def mcfano_feature_selection(
     ----------
     adata - adata object containing information about the raw counts and gene names.
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
-    cv - Float, coefficient of variation for the given dataset. If one is not supplied, one will be estimated.
+    cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
     n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, use p_val_cutoff and min_mcfano_cutoff for cutoffs.
     min_mcfano_cutoff - [Float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, only use top genes cutoff method.
-    verbose - Int, whether to print computations and top 100 genes.
+    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
     """
 
@@ -83,9 +83,10 @@ def mcfano_feature_selection(
     if verbose > 1:
         print("Calculating corrected Fano factors.")
 
-    cv, normlist, residuals, n_cells = calculate_residuals(
-        cv, verbose, raw_count_mat, means, variances, g_counts
-    )
+    if cv is None:
+        cv = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
+
+    cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
 
     corrected_fanos = calculate_mcfano(residuals, n_cells)
 
@@ -95,8 +96,9 @@ def mcfano_feature_selection(
             f"Finished calculating corrected Fano factors for {corrected_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
         )
 
-    # Store Fano
+    # Store mc_Fano and cv
     adata.var["mc_Fano"] = np.array(corrected_fanos).flatten()
+    adata.uns['CV_for_mc_Fano_fit'] = cv
 
     min_fano = np.quantile(corrected_fanos, min_mcfano_cutoff)
     if verbose > 1:
@@ -165,14 +167,6 @@ def mcfano_feature_selection(
     # Returning data
     if return_residuals:
         adata.layers['residuals'] = residuals
-
-
-def calculate_mcfano(residuals, n_cells):
-    squared_residuals = residuals**2
-    corrected_fanos = 1 / (n_cells - 1) * np.sum(squared_residuals, axis=0)
-    corrected_fanos = np.array(corrected_fanos).flatten()
-
-    return corrected_fanos
 
 
 def calculate_p_value(
