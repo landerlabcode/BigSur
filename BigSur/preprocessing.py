@@ -54,10 +54,10 @@ def calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts):
     return cv, normlist, residuals, n_cells
 
 
-def fit_cv(raw_count_mat, means, variances, g_counts, verbose):
-    '''Fits CV to genes with means > 0.01 and means < 10. Slope of linear fit in mcFano vs mean should be 0, so try different CVs and pick the CV with slope closest to zero.'''
+def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, max_mean = 100):
+    '''Fits CV to genes with means > min_mean and means < max_min. Slope of linear fit in mcFano vs mean should be 0, so try different CVs and pick the CV with slope closest to zero.'''
 
-    log_vec = np.logical_and(means > 0.01 , means < 10)
+    log_vec = np.logical_and(means > min_mean , means < max_mean)
     subset_means = means[log_vec]
     subset_variances = variances[log_vec]
     subset_g_counts = g_counts[log_vec]
