@@ -73,7 +73,7 @@ def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, m
 
         corrected_fanos = calculate_mcfano(residuals, n_cells)
 
-        fit_object = linregress(subset_means, corrected_fanos)
+        fit_object = linregress(np.log10(subset_means), np.log10(corrected_fanos))
 
         slope = fit_object[0]
 
