@@ -116,7 +116,7 @@ def mcfano_feature_selection(
         toc = time.perf_counter()
         if verbose > 1:
             print(
-                f"Finished calculating p-values for {p_vals_corrected[~np.isnan(p_vals_corrected)].shape[0]} corrected Fano factors in {(toc-tic):04f} seconds."
+                f"Finished calculating p-values for {p_vals_corrected.shape[0]} corrected Fano factors in {(toc-tic):04f} seconds."
             )
 
         # Store p-values
@@ -182,10 +182,7 @@ def calculate_p_value(
     p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
 
     # FDR correct:
-    _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff) # For FDR just need to add a parameter to account for all pvalues
-    meets_cutoff = np.repeat(False, p_vals.shape[0])
-    # has nan for pvalues that weren't calculated
-    meets_cutoff[p_vals_corrected <= cutoff] = True
+    meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
 
     return meets_cutoff, p_vals_corrected
 
