@@ -13,6 +13,8 @@ from anndata import AnnData
 from mpmath import ncdf, exp
 import numexpr as ne
 import warnings
+from statsmodels.stats.multitest import fdrcorrection
+from joblib import Parallel, delayed
 from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano
 
 warnings.simplefilter('always', UserWarning)
@@ -181,13 +183,12 @@ def calculate_p_value(
                         indices, subsetemat, k2, k3, k4)
 
     # FDR correct:
-    _, p_vals_corrected_sub = fdrcorrection(p_vals[indices], p_vals.shape[0], alpha=cutoff) # For FDR just need to add a parameter to account for all pvalues
-    p_vals[indices] = p_vals_corrected_sub
+    _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff) # For FDR just need to add a parameter to account for all pvalues
     meets_cutoff = np.repeat(False, p_vals.shape[0])
     # has nan for pvalues that weren't calculated
-    meets_cutoff[p_vals <= cutoff] = True
+    meets_cutoff[p_vals_corrected <= cutoff] = True
 
-    return meets_cutoff, p_vals
+    return meets_cutoff, p_vals_corrected
 
 
 def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
@@ -206,65 +207,75 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
     indices = np.where(corrected_fanos > min_fano)[0]
     subsetemat = emat[indices, :].astype(float)
 
-    dict_for_vars = {"chi": chi, "n_cells": n_cells, "subsetemat": subsetemat}
+    dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
 
-    dict_for_vars["subsetematsquare"] = ne.evaluate(
+    def DoLoop(dict_for_vars, gene_row):
+        dict_for_vars['subsetemat'] = dict_for_vars['emat'][gene_row,:]
+
+        dict_for_vars["subsetematsquare"] = ne.evaluate(
         "subsetemat**2", dict_for_vars)
-    dict_for_vars["subsetematcube"] = ne.evaluate(
-        "subsetemat**3", dict_for_vars)
-    dict_for_vars["subsetmatfourth"] = ne.evaluate(
-        "subsetemat**4", dict_for_vars)
+        dict_for_vars["subsetematcube"] = ne.evaluate(
+            "subsetemat**3", dict_for_vars)
+        dict_for_vars["subsetmatfourth"] = ne.evaluate(
+            "subsetemat**4", dict_for_vars)
 
-    dict_for_vars["p1"] = ne.evaluate(
-        "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
-        dict_for_vars,
-    )
-    dict_for_vars["p2"] = ne.evaluate(
-        "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
-    )
-    dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
-    dict_for_vars["p4"] = ne.evaluate(
-        "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
-        dict_for_vars,
-    )
+        dict_for_vars["p1"] = ne.evaluate(
+            "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
+            dict_for_vars,
+        )
+        dict_for_vars["p2"] = ne.evaluate(
+            "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
+        )
+        dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
+        dict_for_vars["p4"] = ne.evaluate(
+            "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
+            dict_for_vars,
+        )
 
-    dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2, axis=1)", dict_for_vars)
-    dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3, axis=1)", dict_for_vars)
-    dict_for_vars["sump4"] = ne.evaluate("sum(p4, axis=1)", dict_for_vars)
+        dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
+        dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
+        dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
 
-    g1 = np.ones(subsetemat.shape[0])
+        g1 = np.ones(subsetemat.shape[0])
 
-    g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
+        g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
 
-    g3 = ne.evaluate(
-        "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
-    )
+        g3 = ne.evaluate(
+            "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
+        )
 
-    dict_for_vars["sum1"] = ne.evaluate(
-        "sum(p1/(n_cells**2*p2), axis=1)", dict_for_vars
-    )
-    dict_for_vars["sum2"] = ne.evaluate(
-        "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4), axis=1)",
-        dict_for_vars,
-    )
-    dict_for_vars["sum3"] = ne.evaluate(
-        "sum(p4/n_cells, axis=1)", dict_for_vars)
-    dict_for_vars["sum4"] = ne.evaluate(
-        "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4), axis=1)",
-        dict_for_vars,
-    )
+        dict_for_vars["sum1"] = ne.evaluate(
+            "sum(p1/(n_cells**2*p2))", dict_for_vars
+        )
+        dict_for_vars["sum2"] = ne.evaluate(
+            "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
+            dict_for_vars,
+        )
+        dict_for_vars["sum3"] = ne.evaluate(
+            "sum(p4/n_cells)", dict_for_vars)
+        dict_for_vars["sum4"] = ne.evaluate(
+            "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
+            dict_for_vars,
+        )
 
-    g4 = ne.evaluate(
-        "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
-        dict_for_vars,
-    )
+        g4 = ne.evaluate(
+            "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
+            dict_for_vars,
+        )
 
-    k2 = -(g1**2) + g2
+        k2 = -(g1**2) + g2
 
-    k3 = 2 * g1**3 - 3 * g1 * g2 + g3
+        k3 = 2 * g1**3 - 3 * g1 * g2 + g3
 
-    k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
+        k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
+        return k2, k3, k4
+        
+    outs = np.array(Parallel(n_jobs=10)(delayed(DoLoop)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
+    k2, k3, k4 = np.split(outs, 3, axis=1)
+
     return p_vals, indices, subsetemat, k2, k3, k4
+
+   
 
 
 def find_pvals(corrected_fanos, p_vals, indices, subsetemat, k2, k3, k4):
@@ -320,103 +331,3 @@ def find_pvals(corrected_fanos, p_vals, indices, subsetemat, k2, k3, k4):
         p_vals[indices[i]] = cdf_brent
 
     return p_vals
-
-def fdrcorrection(pvals, total_n_features, alpha=0.05, method='indep', is_sorted=False):
-    '''
-    The following code is from statsmodels.stats.multitest, v0.13.5. The only change is the _ecdf function. 
-    The new function allows for FDR correction given more tests than were actually computed.
-
-    pvalue correction for false discovery rate.
-
-    This covers Benjamini/Hochberg for independent or positively correlated and
-    Benjamini/Yekutieli for general or negatively correlated tests.
-
-    Parameters
-    ----------
-    pvals : array_like, 1d
-        Set of p-values of the individual tests.
-    total_n_features : int
-        Number of total tests that were run.
-    alpha : float, optional
-        Family-wise error rate. Defaults to ``0.05``.
-    method : {'i', 'indep', 'p', 'poscorr', 'n', 'negcorr'}, optional
-        Which method to use for FDR correction.
-        ``{'i', 'indep', 'p', 'poscorr'}`` all refer to ``fdr_bh``
-        (Benjamini/Hochberg for independent or positively
-        correlated tests). ``{'n', 'negcorr'}`` both refer to ``fdr_by``
-        (Benjamini/Yekutieli for general or negatively correlated tests).
-        Defaults to ``'indep'``.
-    is_sorted : bool, optional
-        If False (default), the p_values will be sorted, but the corrected
-        pvalues are in the original order. If True, then it assumed that the
-        pvalues are already sorted in ascending order.
-
-    Returns
-    -------
-    rejected : ndarray, bool
-        True if a hypothesis is rejected, False if not
-    pvalue-corrected : ndarray
-        pvalues adjusted for multiple hypothesis testing to limit FDR
-
-    Notes
-    -----
-    If there is prior information on the fraction of true hypothesis, then alpha
-    should be set to ``alpha * m/m_0`` where m is the number of tests,
-    given by the p-values, and m_0 is an estimate of the true hypothesis.
-    (see Benjamini, Krieger and Yekuteli)
-
-    The two-step method of Benjamini, Krieger and Yekutiel that estimates the number
-    of false hypotheses will be available (soon).
-
-    Both methods exposed via this function (Benjamini/Hochberg, Benjamini/Yekutieli)
-    are also available in the function ``multipletests``, as ``method="fdr_bh"`` and
-    ``method="fdr_by"``, respectively.
-
-    See also
-    --------
-    multipletests
-
-    '''
-    pvals = np.asarray(pvals)
-    assert pvals.ndim == 1, "pvals must be 1-dimensional, that is of shape (n,)"
-
-    if not is_sorted:
-        pvals_sortind = np.argsort(pvals)
-        pvals_sorted = np.take(pvals, pvals_sortind)
-    else:
-        pvals_sorted = pvals  # alias
-
-    if method in ['i', 'indep', 'p', 'poscorr']:
-        ecdffactor = _ecdf(pvals_sorted, total_n_features)
-    elif method in ['n', 'negcorr']:
-        cm = np.sum(1./np.arange(1, len(pvals_sorted)+1))   #corrected this
-        ecdffactor = _ecdf(pvals_sorted, total_n_features) / cm
-##    elif method in ['n', 'negcorr']:
-##        cm = np.sum(np.arange(len(pvals)))
-##        ecdffactor = ecdf(pvals_sorted)/cm
-    else:
-        raise ValueError('only indep and negcorr implemented')
-    reject = pvals_sorted <= ecdffactor*alpha
-    if reject.any():
-        rejectmax = max(np.nonzero(reject)[0])
-        reject[:rejectmax] = True
-
-    pvals_corrected_raw = pvals_sorted / ecdffactor
-    pvals_corrected = np.minimum.accumulate(pvals_corrected_raw[::-1])[::-1]
-    del pvals_corrected_raw
-    pvals_corrected[pvals_corrected>1] = 1
-    if not is_sorted:
-        pvals_corrected_ = np.empty_like(pvals_corrected)
-        pvals_corrected_[pvals_sortind] = pvals_corrected
-        del pvals_corrected
-        reject_ = np.empty_like(reject)
-        reject_[pvals_sortind] = reject
-        return reject_, pvals_corrected_
-    else:
-        return reject, pvals_corrected
-    
-def _ecdf(x, total_n_features):
-    '''no frills empirical cdf used in fdrcorrection; This function has been changed from statsmodels.stats.multitest, v0.13.5.
-    '''
-    nobs = len(x)
-    return np.arange(1,nobs+1)/float(total_n_features)
