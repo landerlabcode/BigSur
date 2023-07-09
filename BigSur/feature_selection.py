@@ -175,12 +175,11 @@ def calculate_p_value(
 ):
     """Calculate the p value for corrected fanos"""
 
-    p_vals, indices, subsetemat, k2, k3, k4 = find_moments(
+    p_vals, k2, k3, k4 = find_moments(
         raw_count_mat, cv, means, normlist, corrected_fanos, min_fano
     )
 
-    p_vals = find_pvals(corrected_fanos, p_vals,
-                        indices, subsetemat, k2, k3, k4)
+    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
 
     # FDR correct:
     _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff) # For FDR just need to add a parameter to account for all pvalues
@@ -203,9 +202,6 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
     n_cells = raw_count_mat.shape[0]
     p_vals = np.empty(corrected_fanos.shape[0])
     # Don't calculate p_vals for genes below cutoff
-    p_vals[corrected_fanos <= min_fano] = np.nan
-    indices = np.where(corrected_fanos > min_fano)[0]
-    subsetemat = emat[indices, :].astype(float)
 
     dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
 
@@ -236,7 +232,7 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
         dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
         dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
 
-        g1 = np.ones(subsetemat.shape[0])
+        g1 = 1
 
         g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
 
@@ -270,21 +266,21 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
         k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
         return k2, k3, k4
         
-    outs = np.array(Parallel(n_jobs=10)(delayed(DoLoop)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
+    outs = np.array(Parallel(n_jobs=-2)(delayed(DoLoop)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
     k2, k3, k4 = np.split(outs, 3, axis=1)
 
-    return p_vals, indices, subsetemat, k2, k3, k4
+    return p_vals, k2, k3, k4
 
    
 
 
-def find_pvals(corrected_fanos, p_vals, indices, subsetemat, k2, k3, k4):
+def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
     """Take moments and find p values for each corrected fano"""
-    for i in range(subsetemat.shape[0]):
-        fano = corrected_fanos[indices[i]]
-        subk2 = k2[i]
-        subk3 = k3[i]
-        subk4 = k4[i]
+    for gene_row in range(corrected_fanos.shape[0]):
+        fano = corrected_fanos[gene_row]
+        subk2 = k2[gene_row]
+        subk3 = k3[gene_row]
+        subk4 = k4[gene_row]
 
         def f(x):
             out = (
@@ -328,6 +324,6 @@ def find_pvals(corrected_fanos, p_vals, indices, subsetemat, k2, k3, k4):
         else:
             cdf_brent = 1 - ncdf(ge_brent)
 
-        p_vals[indices[i]] = cdf_brent
+        p_vals[gene_row] = cdf_brent
 
     return p_vals
