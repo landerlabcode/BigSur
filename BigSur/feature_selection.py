@@ -25,7 +25,7 @@ def mcfano_feature_selection(
     layer: str,
     cv: Union[bool, float] = 0.5,
     n_genes_for_PCA: Union[bool, int] = False,
-    min_mcfano_cutoff: float = 0.95,
+    min_mcfano_cutoff: Union[bool, float] = 0.95,
     p_val_cutoff: Union[bool, float] = 0.05,
     return_residuals: bool = False,
     verbose: int = 1,
@@ -38,45 +38,16 @@ def mcfano_feature_selection(
     adata - adata object containing information about the raw counts and gene names.
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
-    n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, use p_val_cutoff and min_mcfano_cutoff for cutoffs.
-    min_mcfano_cutoff - [Float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column.
-    p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, only use top genes cutoff method.
+    n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
+    min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
+    p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
     """
 
     # Setup
-    # Determine whether using pvals or n top genes or both
-    is_n_genes = isinstance(n_genes_for_PCA, bool)
-    is_cutoff = isinstance(p_val_cutoff, float)
-    # Need to add min_fano only as an option
-    if not is_n_genes and is_cutoff:
-        if verbose >= 1:
-            print(
-                f"Using pvalue cutoff of {p_val_cutoff} and calculating pvalues for genes with mcFano factor that are {min_mcfano_cutoff} quantile and top {n_genes_for_PCA} genes for highly variable genes"
-            )
-        pval_or_ntop_genes = "Both"
-    elif is_n_genes and is_cutoff:
-        if verbose >= 1:
-            print(
-                f"Only using pvalue cutoff {p_val_cutoff} and calculating pvalues for genes with mcFano factor that are {min_mcfano_cutoff} quantile for highly variable genes"
-            )
-        pval_or_ntop_genes = "pvalue"
-    elif not is_n_genes and not is_cutoff:
-        if verbose >= 1:
-            print(
-                f"Only using top {n_genes_for_PCA} genes for highly variable genes")
-        pval_or_ntop_genes = "nTop"
-    elif not is_cutoff and is_n_genes:
-        if verbose >= 1:
-            print(
-                f"Only using min fano quantile cutoff of {min_mcfano_cutoff} for highly variable genes")
-        pval_or_ntop_genes = "min_fano"
-    else:
-        raise Exception(
-            "Please specify either number of top genes or pvalue cutoff or min fano quantile cutoff."
-        )
-
+    determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose)
+        
     # Create variables
     raw_count_mat, means, variances, g_counts = make_vars_and_qc(adata, layer)
 
@@ -101,60 +72,27 @@ def mcfano_feature_selection(
     adata.var["mc_Fano"] = np.array(corrected_fanos).flatten()
     adata.uns['CV_for_mc_Fano_fit'] = cv
 
-    min_fano = np.quantile(corrected_fanos, min_mcfano_cutoff)
-    if verbose > 1:
-        print(f'Setting min_fano to {min_fano}')
-
     # Calculate p-values
-    if pval_or_ntop_genes != "nTop" and pval_or_ntop_genes != "min_fano":
+    if isinstance(p_val_cutoff, float):
         tic = time.perf_counter()
         if verbose > 1:
             print("Calculating p-values.")
         meets_cutoff, p_vals_corrected = calculate_p_value(
-            raw_count_mat, cv, means, normlist, corrected_fanos, min_fano, p_val_cutoff
+            raw_count_mat, cv, means, normlist, corrected_fanos, p_val_cutoff
         )
         toc = time.perf_counter()
         if verbose > 1:
             print(
-                f"Finished calculating p-values for {p_vals_corrected.shape[0]} corrected Fano factors in {(toc-tic):04f} seconds."
+                f"Finished calculating p-values in {(toc-tic):04f} seconds."
             )
 
         # Store p-values
-        adata.var["p-value"] = p_vals_corrected
-
-    # Store HVGs
-    if pval_or_ntop_genes == "pvalue":
-        genes = (
-            adata.var.loc[meets_cutoff, "mc_Fano"].sort_values(
-                ascending=False).index
-        )  # Sorted for easy printing later
+        adata.var["FDR_adj_pvalue"] = p_vals_corrected
+    else:
         if verbose > 1:
-            print(
-                f"Setting {len(genes)} genes with p-values below {p_val_cutoff} and Fano factors above {min_fano} as highly variable."
-            )
-    elif pval_or_ntop_genes == "nTop":
-        genes = adata.var.sort_values("mc_Fano", ascending=False)[
-            :n_genes_for_PCA
-        ].index
-        if verbose > 1:
-            print(f"Setting top {n_genes_for_PCA} genes as highly variable.")
-    elif pval_or_ntop_genes == "min_fano":
-        genes = adata.var.loc[adata.var['mc_Fano'] >
-                              min_fano, 'mc_Fano'].sort_values().index
-        if verbose > 1:
-            print(
-                f"Setting all genes with mcFano > {min_fano} as highly variable.")
-    elif pval_or_ntop_genes == "Both":
-        genesdf = adata.var.loc[meets_cutoff, "mc_Fano"]
-        genes = genesdf.sort_values(ascending=False)[:n_genes_for_PCA].index
-        # Check if pvalue cuttoff is lower than requested number of genes
-        if meets_cutoff.sum() < n_genes_for_PCA:
-            warnings.warn(
-                f'Number of genes meeting cutoffs ({meets_cutoff.sum()}) is lower than user requested genes ({n_genes_for_PCA}). Only including genes meeting cutoff in "highly_variable" slot.')
-        if verbose > 1:
-            print(
-                f"Setting {len(genes)} genes with p-values below {p_val_cutoff} and Fano factors above {min_fano} as highly variable."
-            )
+            print("Skipping p-value calculation.")
+            
+    genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose)
     adata.var["highly_variable"] = False
     adata.var.loc[genes, "highly_variable"] = True
     if verbose > 1:
@@ -169,14 +107,13 @@ def mcfano_feature_selection(
     if return_residuals:
         adata.layers['residuals'] = residuals
 
-
 def calculate_p_value(
-    raw_count_mat, cv, means, normlist, corrected_fanos, min_fano, cutoff
+    raw_count_mat, cv, means, normlist, corrected_fanos, cutoff
 ):
     """Calculate the p value for corrected fanos"""
 
     p_vals, k2, k3, k4 = find_moments(
-        raw_count_mat, cv, means, normlist, corrected_fanos, min_fano
+        raw_count_mat, cv, means, normlist, corrected_fanos
     )
 
     p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
@@ -186,8 +123,7 @@ def calculate_p_value(
 
     return meets_cutoff, p_vals_corrected
 
-
-def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
+def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos):
     """Find moments for each gene distribution"""
     wlist = len(normlist) * normlist
 
@@ -268,9 +204,6 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, min_fano):
 
     return p_vals, k2, k3, k4
 
-   
-
-
 def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
     """Take moments and find p values for each corrected fano"""
     for gene_row in range(corrected_fanos.shape[0]):
@@ -324,3 +257,66 @@ def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
         p_vals[gene_row] = cdf_brent
 
     return p_vals
+
+def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
+        # Determine whether using pvals or n top genes or min_fano or combo thereof
+        is_n_genes = type(n_genes_for_PCA) == int
+        is_p_val_cutoff = isinstance(p_val_cutoff, float)
+        is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
+
+        if not is_n_genes and not is_p_val_cutoff and not is_min_fano_cutoff:
+            raise Exception(
+                "Please specify either number of top genes or pvalue cutoff or min fano quantile cutoff."
+            )
+
+        if verbose >= 1:
+            print_string = "Using"
+            n_of_ands = 0
+            if is_n_genes:
+                print_string += f" {n_genes_for_PCA} top genes"
+                n_of_ands += 1
+            if is_p_val_cutoff:
+                if n_of_ands == 1:
+                    print_string += f" and {p_val_cutoff} for pvalue cutoff"
+                else:
+                    print_string += f" {p_val_cutoff} for pvalue cutoff"
+                n_of_ands += 1
+            if is_min_fano_cutoff:
+                if n_of_ands > 0:
+                    print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
+                else:
+                    f" {min_mcfano_cutoff} for mcfano quantile cutoff"
+            print_string += " for highly variable genes."        
+            
+            print(print_string)
+
+def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
+    is_n_genes = type(n_genes_for_PCA) == int
+    is_p_val_cutoff = isinstance(p_val_cutoff, float)
+    is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
+
+    # Store adata for easy filtering
+    adata.var = adata.var.sort_values('mc_Fano', ascending = False) # Sort from greatest to smallest mcFano
+
+    if is_min_fano_cutoff:
+        min_fano = np.quantile(adata.var['mc_Fano'], min_mcfano_cutoff)
+        if verbose > 1:
+            print(f'Setting min_fano to {min_fano:.4f}.')
+    else:
+        min_fano = 0
+    genes = adata.var[adata.var['mc_Fano'] > min_fano].index
+    
+    if is_p_val_cutoff:
+        genes = np.intersect1d(genes, adata.var[adata.var['FDR_adj_pvalue'] < p_val_cutoff].index)
+
+    if is_n_genes:
+        if n_genes_for_PCA > genes.shape[0]:
+            warnings.warn(
+            f'Number of genes meeting cutoffs ({genes.shape[0]}) is lower than user requested genes ({n_genes_for_PCA}). Only including genes meeting cutoff in "highly_variable" slot. Please increase the min_mcfano_cutoff, decrease the p_val_cutoff, or set either or both to False.')
+        else:
+            genes = genes[:n_genes_for_PCA] # Should be already sorted
+
+    if verbose > 1:
+        print(f'Setting {genes.shape[0]} genes as highly variable.')
+
+    return genes
