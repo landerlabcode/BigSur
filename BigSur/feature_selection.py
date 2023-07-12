@@ -31,7 +31,7 @@ def mcfano_feature_selection(
     verbose: int = 1,
 ):
     """
-    Calculate the corrected Fano factor for all genes in the dataset. mc_Fano column will be added to .var. Highly_variable column will be added to .var based on the n_genes_for_pca and cutoff parameters.
+    Calculate the corrected Fano factor for all genes in the dataset. mc_Fano column will be added to .var. Highly_variable column will be added to .var based on the n_genes_for_pca, min_mcfano_cutoff and p_val_cutoff parameters.
 
     Parameters
     ----------
@@ -54,13 +54,14 @@ def mcfano_feature_selection(
     tic = time.perf_counter()
     if verbose > 1:
         print("Calculating corrected Fano factors.")
-
+    # Fit cv if not provided
     if cv is None:
-        cv = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
-
-    cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
-
-    corrected_fanos = calculate_mcfano(residuals, n_cells)
+        cv, residuals, corrected_fanos = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
+    else:
+        # Calculate residuals
+        cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
+        # Calculate mcfanos from residuals
+        corrected_fanos = calculate_mcfano(residuals, n_cells)
 
     toc = time.perf_counter()
     if verbose > 1:
@@ -137,69 +138,8 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos):
     # Don't calculate p_vals for genes below cutoff
 
     dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
-
-    def DoLoop(dict_for_vars, gene_row):
-        dict_for_vars['subsetemat'] = dict_for_vars['emat'][gene_row,:]
-
-        dict_for_vars["subsetematsquare"] = ne.evaluate(
-        "subsetemat**2", dict_for_vars)
-        dict_for_vars["subsetematcube"] = ne.evaluate(
-            "subsetemat**3", dict_for_vars)
-        dict_for_vars["subsetmatfourth"] = ne.evaluate(
-            "subsetemat**4", dict_for_vars)
-
-        dict_for_vars["p1"] = ne.evaluate(
-            "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
-            dict_for_vars,
-        )
-        dict_for_vars["p2"] = ne.evaluate(
-            "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
-        )
-        dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
-        dict_for_vars["p4"] = ne.evaluate(
-            "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
-            dict_for_vars,
-        )
-
-        dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
-        dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
-        dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
-
-        g1 = 1
-
-        g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
-
-        g3 = ne.evaluate(
-            "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
-        )
-
-        dict_for_vars["sum1"] = ne.evaluate(
-            "sum(p1/(n_cells**2*p2))", dict_for_vars
-        )
-        dict_for_vars["sum2"] = ne.evaluate(
-            "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
-        dict_for_vars["sum3"] = ne.evaluate(
-            "sum(p4/n_cells)", dict_for_vars)
-        dict_for_vars["sum4"] = ne.evaluate(
-            "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
-
-        g4 = ne.evaluate(
-            "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
-            dict_for_vars,
-        )
-
-        k2 = -(g1**2) + g2
-
-        k3 = 2 * g1**3 - 3 * g1 * g2 + g3
-
-        k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
-        return k2, k3, k4
         
-    outs = np.array(Parallel(n_jobs=-2)(delayed(DoLoop)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
+    outs = np.array(Parallel(n_jobs=-2)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
     k2, k3, k4 = np.split(outs, 3, axis=1)
 
     return p_vals, k2, k3, k4
@@ -285,7 +225,7 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
                 if n_of_ands > 0:
                     print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
                 else:
-                    f" {min_mcfano_cutoff} for mcfano quantile cutoff"
+                    print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
             print_string += " for highly variable genes."        
             
             print(print_string)
@@ -320,3 +260,64 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
         print(f'Setting {genes.shape[0]} genes as highly variable.')
 
     return genes
+
+def do_loop_ks_calculation(dict_for_vars, gene_row):
+        dict_for_vars['subsetemat'] = dict_for_vars['emat'][gene_row,:]
+
+        dict_for_vars["subsetematsquare"] = ne.evaluate(
+        "subsetemat**2", dict_for_vars)
+        dict_for_vars["subsetematcube"] = ne.evaluate(
+            "subsetemat**3", dict_for_vars)
+        dict_for_vars["subsetmatfourth"] = ne.evaluate(
+            "subsetemat**4", dict_for_vars)
+
+        dict_for_vars["p1"] = ne.evaluate(
+            "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
+            dict_for_vars,
+        )
+        dict_for_vars["p2"] = ne.evaluate(
+            "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
+        )
+        dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
+        dict_for_vars["p4"] = ne.evaluate(
+            "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
+            dict_for_vars,
+        )
+
+        dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
+        dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
+        dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
+
+        g1 = 1
+
+        g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
+
+        g3 = ne.evaluate(
+            "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
+        )
+
+        dict_for_vars["sum1"] = ne.evaluate(
+            "sum(p1/(n_cells**2*p2))", dict_for_vars
+        )
+        dict_for_vars["sum2"] = ne.evaluate(
+            "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
+            dict_for_vars,
+        )
+        dict_for_vars["sum3"] = ne.evaluate(
+            "sum(p4/n_cells)", dict_for_vars)
+        dict_for_vars["sum4"] = ne.evaluate(
+            "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
+            dict_for_vars,
+        )
+
+        g4 = ne.evaluate(
+            "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
+            dict_for_vars,
+        )
+
+        k2 = -(g1**2) + g2
+
+        k3 = 2 * g1**3 - 3 * g1 * g2 + g3
+
+        k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
+        return k2, k3, k4
