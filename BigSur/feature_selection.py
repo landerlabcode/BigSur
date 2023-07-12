@@ -77,7 +77,7 @@ def mcfano_feature_selection(
         tic = time.perf_counter()
         if verbose > 1:
             print("Calculating p-values.")
-        meets_cutoff, p_vals_corrected = calculate_p_value(
+        meets_cutoff, p_vals_corrected, p_vals = calculate_p_value(
             raw_count_mat, cv, means, normlist, corrected_fanos, p_val_cutoff
         )
         toc = time.perf_counter()
@@ -88,6 +88,7 @@ def mcfano_feature_selection(
 
         # Store p-values
         adata.var["FDR_adj_pvalue"] = p_vals_corrected
+        adata.var["p_value"] = p_vals
     else:
         if verbose > 1:
             print("Skipping p-value calculation.")
@@ -121,7 +122,7 @@ def calculate_p_value(
     # FDR correct:
     meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
 
-    return meets_cutoff, p_vals_corrected
+    return meets_cutoff, p_vals_corrected, p_vals
 
 def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos):
     """Find moments for each gene distribution"""
@@ -235,18 +236,19 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
     is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
 
     # Store adata for easy filtering
-    adata.var = adata.var.sort_values('mc_Fano', ascending = False) # Sort from greatest to smallest mcFano
+    adata_var_df = adata.var.sort_values('mc_Fano', ascending = False).copy() # Sort from greatest to smallest mcFano; without copy there's a bug
 
     if is_min_fano_cutoff:
-        min_fano = np.quantile(adata.var['mc_Fano'], min_mcfano_cutoff)
+        min_fano = np.quantile(adata_var_df['mc_Fano'], min_mcfano_cutoff)
         if verbose > 1:
             print(f'Setting min_fano to {min_fano:.4f}.')
     else:
         min_fano = 0
-    genes = adata.var[adata.var['mc_Fano'] > min_fano].index
+    genes = adata_var_df[adata_var_df > min_fano].index
     
     if is_p_val_cutoff:
-        genes = np.intersect1d(genes, adata.var[adata.var['FDR_adj_pvalue'] < p_val_cutoff].index)
+        genes = np.intersect1d(genes, adata_var_df[adata_var_df['FDR_adj_pvalue'] < p_val_cutoff].index)
+        genes = adata_var_df.loc[genes].sort_values('mc_Fano', ascending = False).index # Reorder
 
     if is_n_genes:
         if n_genes_for_PCA > genes.shape[0]:
