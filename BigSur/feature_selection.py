@@ -56,12 +56,11 @@ def mcfano_feature_selection(
         print("Calculating corrected Fano factors.")
     # Fit cv if not provided
     if cv is None:
-        cv, residuals, corrected_fanos = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
-    else:
-        # Calculate residuals
-        cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
-        # Calculate mcfanos from residuals
-        corrected_fanos = calculate_mcfano(residuals, n_cells)
+        cv = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
+    # Calculate residuals
+    cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
+    # Calculate mcfanos from residuals
+    corrected_fanos = calculate_mcfano(residuals, n_cells)
 
     toc = time.perf_counter()
     if verbose > 1:

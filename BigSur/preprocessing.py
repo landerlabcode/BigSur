@@ -77,10 +77,6 @@ def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, m
 
         slope = fit_object[0]
 
-        if cv == 0.5:
-            residuals_05 = residuals.copy()
-            corrected_fanos_05 = corrected_fanos.copy()
-
         if slope < 0:
             if slope_store < np.abs(slope):
                 cv = cv_store
@@ -88,14 +84,14 @@ def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, m
                 cv = cv_try
             if verbose > 1:
                 print(f"Using a coefficient of variation of {cv:.4}.")
-            return cv, residuals, corrected_fanos
+            return cv
         else:
             cv_store = cv_try
             slope_store = slope
     warnings.warn(
                 'CV cannot be fit in biological range -- this probably means that the dataset is composed of multiple celltypes. We recommend subsetting the celltypes and redoing CV fit. Setting CV = 0.5.')
     cv = 0.5
-    return cv, residuals_05, corrected_fanos_05
+    return cv
 
 def calculate_mcfano(residuals, n_cells):
     squared_residuals = residuals**2
