@@ -28,6 +28,7 @@ def mcfano_feature_selection(
     min_mcfano_cutoff: Union[bool, float] = 0.95,
     p_val_cutoff: Union[bool, float] = 0.05,
     return_residuals: bool = False,
+    n_jobs: int = -2,
     verbose: int = 1,
 ):
     """
@@ -41,8 +42,10 @@ def mcfano_feature_selection(
     n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
     min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
-    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
+    n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
+    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
+    
     """
 
     # Setup
@@ -56,7 +59,11 @@ def mcfano_feature_selection(
         print("Calculating corrected Fano factors.")
     # Fit cv if not provided
     if cv is None:
+        if verbose > 1:
+            print('Fitting cv.')
         cv = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
+        if verbose >= 1:
+            print(f'After fitting, cv = {cv}')
     # Calculate residuals
     cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
     # Calculate mcfanos from residuals
@@ -78,7 +85,7 @@ def mcfano_feature_selection(
         if verbose > 1:
             print("Calculating p-values.")
         meets_cutoff, p_vals_corrected, p_vals = calculate_p_value(
-            raw_count_mat, cv, means, normlist, corrected_fanos, p_val_cutoff
+            raw_count_mat, cv, means, normlist, corrected_fanos, p_val_cutoff, n_jobs
         )
         toc = time.perf_counter()
         if verbose > 1:
@@ -109,12 +116,12 @@ def mcfano_feature_selection(
         adata.layers['residuals'] = residuals
 
 def calculate_p_value(
-    raw_count_mat, cv, means, normlist, corrected_fanos, cutoff
+    raw_count_mat, cv, means, normlist, corrected_fanos, cutoff, n_jobs
 ):
     """Calculate the p value for corrected fanos"""
 
     p_vals, k2, k3, k4 = find_moments(
-        raw_count_mat, cv, means, normlist, corrected_fanos
+        raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs
     )
 
     p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
@@ -124,7 +131,7 @@ def calculate_p_value(
 
     return meets_cutoff, p_vals_corrected, p_vals
 
-def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos):
+def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     """Find moments for each gene distribution"""
     wlist = len(normlist) * normlist
 
@@ -139,7 +146,7 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos):
 
     dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
         
-    outs = np.array(Parallel(n_jobs=-2)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
+    outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
     k2, k3, k4 = np.split(outs, 3, axis=1)
 
     return p_vals, k2, k3, k4
