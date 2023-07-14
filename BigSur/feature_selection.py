@@ -244,7 +244,7 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
             print(f'Setting min_fano to {min_fano:.4f}.')
     else:
         min_fano = 0
-    genes = adata_var_df[adata_var_df > min_fano].index
+    genes = adata_var_df[adata_var_df['mc_Fano'] > min_fano].index
     
     if is_p_val_cutoff:
         genes = np.intersect1d(genes, adata_var_df[adata_var_df['FDR_adj_pvalue'] < p_val_cutoff].index)
