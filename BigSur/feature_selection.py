@@ -26,7 +26,7 @@ def mcfano_feature_selection(
     cv: Union[bool, float] = 0.5,
     n_genes_for_PCA: Union[bool, int] = False,
     min_mcfano_cutoff: Union[bool, float] = 0.95,
-    p_val_cutoff: Union[bool, float] = 0.05,
+    p_val_cutoff: Union[bool, float] = 0.2,
     return_residuals: bool = False,
     n_jobs: int = -2,
     verbose: int = 1,
