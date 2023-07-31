@@ -194,6 +194,12 @@ def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
                 x0 = -20000
                 fx0 = f(x0)
                 fx1 = f(x1)
+                if fx0 * fx1 >= 0: # kitchen sink approach
+                    range_for_fx = np.arange(-10000, 10000, 0.1)
+                    fx_out = np.array([f(x) for x in range_for_fx]).flatten()
+                    x0 = range_for_fx[np.where(fx_out == fx_out.min())[0]]
+                    sorted_fx_out = np.sort(fx_out)
+                    x1 = sorted_fx_out[np.where(sorted_fx_out > 0)[0][0]]
 
         ge_brent = brentq(f, x0, x1)
         if ge_brent >= 8:
