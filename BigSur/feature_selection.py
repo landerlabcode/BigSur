@@ -5,6 +5,8 @@ Created on Wed Oct  5 09:55:15 2022
 
 @author: emmanueldollinger
 """
+import sympy
+from sympy import CRootOf
 from typing import Union
 import time
 import numpy as np
@@ -144,70 +146,46 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     p_vals = np.empty(corrected_fanos.shape[0])
     # Don't calculate p_vals for genes below cutoff
 
-    dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
-        
+    dict_for_vars = {"chi": chi, "n": n_cells, "emat": emat, "n_cells":n_cells}
+    
     outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
-    k2, k3, k4 = np.split(outs, 3, axis=1)
+    k2, k3, k4, k5 = np.split(outs, 4, axis=1)
+    
+    return p_vals, k2, k3, k4, k5
 
-    return p_vals, k2, k3, k4
-
-def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
+def find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5):
     """Take moments and find p values for each corrected fano"""
+    
+    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
+    
     for gene_row in range(corrected_fanos.shape[0]):
         fano = corrected_fanos[gene_row]
-        subk2 = k2[gene_row]
-        subk3 = k3[gene_row]
-        subk4 = k4[gene_row]
-
-        def f(x):
-            out = (
-                (1 - fano - subk3 / (6 * subk2))
-                + (
-                    subk2**0.5
-                    + (
-                        5 * subk3**2 / (36 * subk2 ** (5 / 2))
-                        - subk4 / (8 * subk2 ** (3 / 2))
-                    )
-                )
-                * x
-                + (subk3 / (6 * subk2)) * x**2
-                + (
-                    -(subk3**2) / (18 * subk2 ** (5 / 2))
-                    + subk4 / (24 * subk2 ** (3 / 2))
-                )
-                * x**3
-            )
-            return out
-
-        # Check ranges for brent's method; sign(f(x0)) != sign(f(x1))
-        x0 = 0
-        x1 = 500
-        fx0 = f(x0)
-        fx1 = f(x1)
-
-        if fx0 * fx1 >= 0:
-            x0 = 500
-            x1 = 20000
-            fx0 = f(x0)
-            fx1 = f(x1)
-            if fx0 * fx1 >= 0:
-                x0 = -20000
-                fx0 = f(x0)
-                fx1 = f(x1)
-                if fx0 * fx1 >= 0: # kitchen sink approach
-                    range_for_fx = np.arange(-10000, 10000, 0.1)
-                    fx_out = np.array([f(x) for x in range_for_fx]).flatten()
-                    x0 = range_for_fx[np.where(fx_out == fx_out.min())[0]]
-                    sorted_fx_out = np.sort(fx_out)
-                    x1 = sorted_fx_out[np.where(sorted_fx_out > 0)[0][0]]
-
-        ge_brent = brentq(f, x0, x1)
-        if ge_brent >= 8:
-            cdf_brent = 0.5 * exp(-(ge_brent**2) / 2)
+        subc1 = c1[gene_row]
+        subc2 = c2[gene_row]
+        subc3 = c3[gene_row]
+        subc4 = c4[gene_row]
+        subc5 = c5[gene_row]
+                
+        x = sympy.symbols("x")
+        fx = subc1 + subc2*x +subc3*x**2 +subc4*x**3 +subc5*x**4
+        
+        roots_list = sympy.real_roots(fx)
+                
+        roots_list = [i.evalf() for i in roots_list]
+                
+        if not roots_list:
+            cdf = 0.5
+        
         else:
-            cdf_brent = 1 - ncdf(ge_brent)
+            desired_root = min([abs(i) for i in roots_list])
 
-        p_vals[gene_row] = cdf_brent
+            if desired_root >=8:
+                cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
+
+            else:
+                cdf = 1 - ncdf(desired_root)
+
+        p_vals[gene_row] = cdf    
 
     return p_vals
 
@@ -276,62 +254,69 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
     return genes
 
 def do_loop_ks_calculation(dict_for_vars, gene_row):
-        dict_for_vars['subsetemat'] = dict_for_vars['emat'][gene_row,:]
+    dict_for_vars['m'] = dict_for_vars['emat'][gene_row,:]
 
-        dict_for_vars["subsetematsquare"] = ne.evaluate(
-        "subsetemat**2", dict_for_vars)
-        dict_for_vars["subsetematcube"] = ne.evaluate(
-            "subsetemat**3", dict_for_vars)
-        dict_for_vars["subsetmatfourth"] = ne.evaluate(
-            "subsetemat**4", dict_for_vars)
+    dict_for_vars["m2"] = ne.evaluate(
+        "m**2", dict_for_vars)
+    dict_for_vars["m3"] = ne.evaluate(
+        "m**3", dict_for_vars)
+    dict_for_vars["m4"] = ne.evaluate(
+        "m**4", dict_for_vars)
+    dict_for_vars["m5"] = ne.evaluate(
+        "m**5", dict_for_vars)
+    dict_for_vars["m6"] = ne.evaluate(
+        "m**6", dict_for_vars)
+    dict_for_vars["m7"] = ne.evaluate(
+        "m**7", dict_for_vars)
+    dict_for_vars["m8"] = ne.evaluate(
+        "m**8", dict_for_vars)
+    dict_for_vars["m9"] = ne.evaluate(
+        "m**9", dict_for_vars)
+    
+    dict_for_vars["k2sum"] = ne.evaluate(
+        "sum(-1 + (1+m*(-4+7*chi+6*(1-2*chi+chi**3)*m+(-3+6*chi-4*chi**3+chi**6)*m2))/(m*(1+(-1+chi)*m)**2))", dict_for_vars)
+    
+    dict_for_vars["k3sum"] = ne.evaluate(
+        "sum(1/(m2*(1+(-1+chi)*m)**3) * (1 + (-9 + 31*chi)*m + 2*(16-57*chi+45*chi**3)*m2 + (-56 + 180*chi-21*chi**2-168*chi**3+65*chi**6)*m3+3*(16-48*chi+14*chi**2+40*chi**3-6*chi**4-21*chi**6+5*chi**10)*m4+(-16+48*chi-24*chi**2-30*chi**3+12*chi**4+18*chi**6-3*chi**7-6*chi**10+chi**15)*m5))", dict_for_vars
+    )
+    dict_for_vars["k4sum"] = ne.evaluate(
+        "sum(1/(m3*(1+(-1+chi)*m)**4) * (1+(-15+127*chi)*m + (92-674*chi+966*chi**3)*m2 + (-302 + 1724*chi -271*chi**2 - 2804*chi**3 +1701*chi**6)*m3 + 6*(96-452*chi+174*chi**2 + 620*chi**3 - 102*chi**4 -511*chi**6 +175*chi**10)*m4 + 2*(-320 + 1344*chi -822*chi**2 - 1390*chi**3 + 672*chi**4 +1124*chi**6 -151*chi**7 -590*chi**10 +133*chi**15)*m5 +4*(96 -384*chi +312*chi**2 +278*chi**3 -276*chi**4 +18*chi**5 -194*chi**6 +84*chi**7 -9*chi**9 +126*chi**10 -15*chi**11 -43*chi**15 +7*chi**21)*m6 +(-96 +384*chi -384*chi**2 -160*chi**3 +314*chi**4 -48*chi**5 +112*chi**6 -120*chi**7 +12*chi**8 +24*chi**9 -80*chi**10 +24*chi**11 -3*chi**12 +32*chi**15 -4*chi**16 -8*chi**21 +chi**28)*m7))", dict_for_vars)
+    
+    
+    k2 = ne.evaluate("1/(-1+n)**2 * k2sum", dict_for_vars)
 
-        dict_for_vars["p1"] = ne.evaluate(
-            "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
-            dict_for_vars,
-        )
-        dict_for_vars["p2"] = ne.evaluate(
-            "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
-        )
-        dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
-        dict_for_vars["p4"] = ne.evaluate(
-            "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
-            dict_for_vars,
-        )
+    k3 = ne.evaluate("1/(-1+n)**3 * k3sum",dict_for_vars)
 
-        dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
-        dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
-        dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
+    k4 = ne.evaluate("1/(-1+n)**4 * k4sum", dict_for_vars)
+      
+    n = dict_for_vars["n"]
+    m = dict_for_vars["m"]
+    m2 = dict_for_vars["m2"]
+    m3 = dict_for_vars["m3"]
+    m4 = dict_for_vars["m4"]
+    m5 = dict_for_vars["m5"]
+    m6 = dict_for_vars["m6"]
+    m7 = dict_for_vars["m7"]
+    m8 = dict_for_vars["m8"]
+    m9 = dict_for_vars["m9"]
 
-        g1 = 1
+    chi = np.longdouble(dict_for_vars["chi"])
+    k5 = 1/(-1+n)**5 * np.sum(1/(m4*(1+(-1+chi)*m)**5) * (1 + (-25+511*chi)*m +30*(8-119*chi+311*chi**3)*m2 + 5*(-248+2540*chi-561*chi**2-7208*chi**3+6821*chi**6)*m3 +(3904 -29880*chi +15690*chi**2 +68000*chi**3 -12990*chi**4 -86865*chi**6 +42525*chi**10)*m4 +(-7872 +49360*chi -39660*chi**2 -81110*chi**3 +46460*chi**4 +98270*chi**6 -13365*chi**7 -74910*chi**10 +22827*chi**15)*m5 + 20*(512 -2832*chi +2898*chi**2 +3168*chi**3 -3654*chi**4 +216*chi**5 -3109*chi**6 +1499*chi**7 -240*chi**9 +2953*chi**10 -315*chi**11 -1390*chi**15 +294*chi**21)*m6 +10*(-832 +4288*chi -5136*chi**2 -2940*chi**3 +6222*chi**4 -1008*chi**5 +2276*chi**6 -2778*chi**7 +172*chi**8 +806*chi**9 -2636*chi**10 +842*chi**11 -65*chi**12 -90*chi**13 +1420*chi**15 -140*chi**16 -476*chi**21 +75*chi**28)*m7 +5*(768 -3840*chi +5184*chi**2 +1152*chi**3 -5656*chi**4 +1728*chi**5 -936*chi**6 +2432*chi**7 -420*chi**8 -960*chi**9 +1448*chi**10 -912*chi**11 +186*chi**12 +192*chi**13 -720*chi**15 +170*chi**16 -12*chi**18 +288*chi**21 -28*chi**22 -73*chi**28 +9*chi**36)*m8 +(-768 +3840*chi -5760*chi**2 +320*chi**3 +5280*chi**4 -2536*chi**5 +560*chi**6 -2240*chi**7 +840*chi**8 +980*chi**9 -1072*chi**10 +880*chi**11 -300*chi**12 -210*chi**13 +400*chi**15 -180*chi**16 +20*chi**17 +40*chi**18 -170*chi**21 +40*chi**22 +50*chi**28 -5*chi**29 -10*chi**36 +chi**45)*m9))    
+    return k2, k3, k4, k5
 
-        g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
-
-        g3 = ne.evaluate(
-            "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
-        )
-
-        dict_for_vars["sum1"] = ne.evaluate(
-            "sum(p1/(n_cells**2*p2))", dict_for_vars
-        )
-        dict_for_vars["sum2"] = ne.evaluate(
-            "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
-        dict_for_vars["sum3"] = ne.evaluate(
-            "sum(p4/n_cells)", dict_for_vars)
-        dict_for_vars["sum4"] = ne.evaluate(
-            "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
-
-        g4 = ne.evaluate(
-            "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
-            dict_for_vars,
-        )
-
-        k2 = -(g1**2) + g2
-
-        k3 = 2 * g1**3 - 3 * g1 * g2 + g3
-
-        k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
-        return k2, k3, k4
+def cf_coefficients(corrected_fanos,k2,k3,k4,k5):
+    """ Calculate coefficients for Cornish Fisher"""
+    
+    k2 = np.reshape(k2, (k2.shape[0],))
+    k3 = np.reshape(k3, (k3.shape[0],))
+    k4 = np.reshape(k4, (k4.shape[0],))
+    k5 = np.reshape(k5, (k5.shape[0],))
+    
+    
+    c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
+    c2 = np.sqrt(k2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
+    c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
+    c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
+    c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
+    
+    return c1, c2, c3, c4, c5
