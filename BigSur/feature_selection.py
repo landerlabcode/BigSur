@@ -303,11 +303,14 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
         dict_for_vars,
     )
 
-    k2 = -(g1**2) + g2
+    #k2 = -(g1**2) + g2 old code
 
-    k3 = 2 * g1**3 - 3 * g1 * g2 + g3
+    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmatsquare*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
 
-    k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
+    k3 = ne.evaluate('sum(1/(subsetmatsquare * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmatsquare * (16 - 57 * chi + 45 * chi**3) + subsetmatcube * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmatfourth * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat**5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
+
+    k4 = ne.evaluate('sum(1/(subsetmatcube * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmatsquare * (92 - 674 * chi + 966 * chi**3) + subsetmatcube * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmatfourth * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat**5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat**6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat**7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28)))', dict_for_vars)
+    #k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
 
     # Temp code for 5th cumulant
     # We've had numerical issues in this context, let's cast everything to float64 just for right now
