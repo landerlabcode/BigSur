@@ -335,3 +335,20 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
 
         k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
         return k2, k3, k4
+
+def cf_coefficients(corrected_fanos,k2,k3,k4,k5 = None):
+    """ Calculate coefficients for Cornish Fisher"""
+    
+    k2 = np.reshape(k2, (k2.shape[0],))
+    k3 = np.reshape(k3, (k3.shape[0],))
+    k4 = np.reshape(k4, (k4.shape[0],))
+    #k5 = np.reshape(k5, (k5.shape[0],))
+    
+    
+    c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
+    c2 = np.sqrt(k2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
+    c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
+    c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
+    #c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
+    
+    return c1, c2, c3, c4, #c5
