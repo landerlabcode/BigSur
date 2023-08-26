@@ -150,7 +150,11 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
     k2, k3, k4, k5 = np.split(outs, 4, axis=1)
 
-    # Fix k dtype 
+    # Fix k shape
+    k2 = k2.flatten()
+    k3 = k3.flatten()
+    k4 = k4.flatten()
+    k5 = k5.flatten() 
 
     return p_vals, k2, k3, k4, k5
 
@@ -355,45 +359,11 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
 
 def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
     """ Calculate coefficients for Cornish Fisher"""
-    
-    k2 = np.reshape(k2, (k2.shape[0],))
-    k3 = np.reshape(k3, (k3.shape[0],))
-    k4 = np.reshape(k4, (k4.shape[0],))
-    k5 = np.reshape(k5, (k5.shape[0],))
-    
-    
-    # c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
-    # c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
-    # c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
-    # c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
-    # c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
 
-    # old coefficences for testing:
-    c1 = (1 - corrected_fanos - k3 / (6 * k2))
-    c2 = (k2**0.5 + (5 * k3**2 / (36 * k2 ** (5 / 2)) - k4 / (8 * k2 ** (3 / 2))))
-    c3 = (k3 / (6 * k2))
-    c4 = (-(k3**2) / (18 * k2 ** (5 / 2)) + k4 / (24 * k2 ** (3 / 2)))
-    c5 = 1
-    
+    c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
+    c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
+    c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
+    c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
+    c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
+
     return c1, c2, c3, c4, c5
-
-# def f(x):
-        
-    #         out = (
-    #             (1 - fano - subk3 / (6 * subk2))
-    #             + (
-    #                 subk2**0.5
-    #                 + (
-    #                     5 * subk3**2 / (36 * subk2 ** (5 / 2))
-    #                     - subk4 / (8 * subk2 ** (3 / 2))
-    #                 )
-    #             )
-    #             * x
-    #             + (subk3 / (6 * subk2)) * x**2
-    #             + (
-    #                 -(subk3**2) / (18 * subk2 ** (5 / 2))
-    #                 + subk4 / (24 * subk2 ** (3 / 2))
-    #             )
-    #             * x**3
-    #         )
-    #         return out
