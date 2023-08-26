@@ -252,92 +252,56 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
 def do_loop_ks_calculation(dict_for_vars, gene_row):
     dict_for_vars['subsetmat'] = dict_for_vars['emat'][gene_row,:]
 
-    dict_for_vars["subsetmatsquare"] = ne.evaluate(
+    dict_for_vars["subsetmat2"] = ne.evaluate(
     "subsetmat**2", dict_for_vars)
-    dict_for_vars["subsetmatcube"] = ne.evaluate(
+    dict_for_vars["subsetmat3"] = ne.evaluate(
         "subsetmat**3", dict_for_vars)
-    dict_for_vars["subsetmatfourth"] = ne.evaluate(
+    dict_for_vars["subsetmat4"] = ne.evaluate(
         "subsetmat**4", dict_for_vars)
+    dict_for_vars["subsetmat5"] = ne.evaluate(
+        "subsetmat**5", dict_for_vars)
+    dict_for_vars["subsetmat6"] = ne.evaluate(
+        "subsetmat**6", dict_for_vars)
+    dict_for_vars["subsetmat7"] = ne.evaluate(
+        "subsetmat**7", dict_for_vars)
 
-    dict_for_vars["p1"] = ne.evaluate(
-        "1+subsetmat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetmat+(-3+6*chi-4*chi**3+chi**6)*subsetmatsquare)",
-        dict_for_vars,
-    )
-    dict_for_vars["p2"] = ne.evaluate(
-        "subsetmat*(n_cells+n_cells*(-1+chi)*subsetmat)**2", dict_for_vars
-    )
-    dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
-    dict_for_vars["p4"] = ne.evaluate(
-        "(1+subsetmat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetmat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetmatsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetmatcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetmatsquare*(n_cells+n_cells*(-1+chi)*subsetmat)**3)",
-        dict_for_vars,
-    )
+    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
 
-    dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
-    dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
-    dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
+    k3 = ne.evaluate('sum(1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
 
-    g1 = 1
-
-    g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
-
-    g3 = ne.evaluate(
-        "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
-    )
-
-    dict_for_vars["sum1"] = ne.evaluate(
-        "sum(p1/(n_cells**2*p2))", dict_for_vars
-    )
-    dict_for_vars["sum2"] = ne.evaluate(
-        "sum(p1**2/(subsetmatsquare*(n_cells+n_cells*(-1+chi)*subsetmat)**4))",
-        dict_for_vars,
-    )
-    dict_for_vars["sum3"] = ne.evaluate(
-        "sum(p4/n_cells)", dict_for_vars)
-    dict_for_vars["sum4"] = ne.evaluate(
-        "sum((1+subsetmat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetmat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetmatsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetmatcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetmat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetmat**6))/(subsetmatcube*(n_cells+n_cells*(-1+chi)*subsetmat)**4))",
-        dict_for_vars,
-    )
-
-    g4 = ne.evaluate(
-        "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
-        dict_for_vars,
-    )
-
-    #k2 = -(g1**2) + g2 old code
-
-    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmatsquare*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
-
-    k3 = ne.evaluate('sum(1/(subsetmatsquare * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmatsquare * (16 - 57 * chi + 45 * chi**3) + subsetmatcube * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmatfourth * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat**5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
-
-    k4 = ne.evaluate('sum(1/(subsetmatcube * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmatsquare * (92 - 674 * chi + 966 * chi**3) + subsetmatcube * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmatfourth * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat**5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat**6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat**7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28)))', dict_for_vars)
+    k4 = ne.evaluate('sum(1/(subsetmat3 * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmat2 * (92 - 674 * chi + 966 * chi**3) + subsetmat3 * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmat4 * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28)))', dict_for_vars)
     #k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
 
     # Temp code for 5th cumulant
     # We've had numerical issues in this context, let's cast everything to float64 just for right now
     subsetmat = dict_for_vars['subsetmat'].astype(np.float64)
 
-    subsetmatsquare = dict_for_vars["subsetmatsquare"].astype(np.float64)
-    subsetmatcube = dict_for_vars["subsetmatcube"].astype(np.float64)
-    subsetmatfourth = dict_for_vars["subsetmatfourth"].astype(np.float64)
+    subsetmat2 = dict_for_vars["subsetmat2"].astype(np.float64)
+    subsetmat3 = dict_for_vars["subsetmat3"].astype(np.float64)
+    subsetmat4 = dict_for_vars["subsetmat4"].astype(np.float64)
+
+    subsetmat5 = dict_for_vars["subsetmat5"].astype(np.float64)
+    subsetmat6 = dict_for_vars["subsetmat6"].astype(np.float64)
+    subsetmat7 = dict_for_vars["subsetmat7"].astype(np.float64)
     chi = np.array(dict_for_vars["chi"], dtype=np.float64)
     n = np.array(dict_for_vars['n_cells'], dtype=np.float64)
     
-    k5 = np.sum(1/(subsetmatfourth * (n + subsetmat * n * (-1 + chi))**5) * (1 + 
+    k5 = np.sum(1/(subsetmat4 * (n + subsetmat * n * (-1 + chi))**5) * (1 + 
     subsetmat * (-25 + 511 * chi) + 
-    30 * subsetmatsquare * (8 - 119 * chi + 311 * chi**3) + 
-    5 * subsetmatcube * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 
+    30 * subsetmat2 * (8 - 119 * chi + 311 * chi**3) + 
+    5 * subsetmat3 * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 
        6821 * chi**6) + 
-    subsetmatfourth * (3904 - 29880 * chi + 15690 * chi**2 + 
+    subsetmat4 * (3904 - 29880 * chi + 15690 * chi**2 + 
        68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 
        42525 * chi**10) + 
-    subsetmat**5 * (-7872 + 49360 * chi - 39660 * chi**2 - 
+    subsetmat5 * (-7872 + 49360 * chi - 39660 * chi**2 - 
        81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 
        13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 
-    20 * subsetmat**6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 
+    20 * subsetmat6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 
        3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 
        240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 
        1390 * chi**15 + 294 * chi**21) + 
-    10 * subsetmat**7 * (-832 + 4288 * chi - 5136 * chi**2 - 
+    10 * subsetmat7 * (-832 + 4288 * chi - 5136 * chi**2 - 
        2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 
        2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 
        2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 
