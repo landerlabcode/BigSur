@@ -7,6 +7,7 @@ Created on Wed Oct  5 09:55:15 2022
 """
 from typing import Union
 import time
+import sympy
 import numpy as np
 from scipy.optimize import brentq
 from anndata import AnnData
@@ -153,61 +154,28 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
 
 def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
     """Take moments and find p values for each corrected fano"""
+    c1, c2, c3, c4 = cf_coefficients(corrected_fanos, k2, k3, k4) # function will take k5 and return c5 eventually
+    x = sympy.symbols("x")
+    fx = c1 + c2*x +c3*x**2 +c4*x**3 #+c5*x**4 # This line takes forever for some reason
     for gene_row in range(corrected_fanos.shape[0]):
-        fano = corrected_fanos[gene_row]
-        subk2 = k2[gene_row]
-        subk3 = k3[gene_row]
-        subk4 = k4[gene_row]
-
-        def f(x):
-            out = (
-                (1 - fano - subk3 / (6 * subk2))
-                + (
-                    subk2**0.5
-                    + (
-                        5 * subk3**2 / (36 * subk2 ** (5 / 2))
-                        - subk4 / (8 * subk2 ** (3 / 2))
-                    )
-                )
-                * x
-                + (subk3 / (6 * subk2)) * x**2
-                + (
-                    -(subk3**2) / (18 * subk2 ** (5 / 2))
-                    + subk4 / (24 * subk2 ** (3 / 2))
-                )
-                * x**3
-            )
-            return out
-
-        # Check ranges for brent's method; sign(f(x0)) != sign(f(x1))
-        x0 = 0
-        x1 = 500
-        fx0 = f(x0)
-        fx1 = f(x1)
-
-        if fx0 * fx1 >= 0:
-            x0 = 500
-            x1 = 20000
-            fx0 = f(x0)
-            fx1 = f(x1)
-            if fx0 * fx1 >= 0:
-                x0 = -20000
-                fx0 = f(x0)
-                fx1 = f(x1)
-                if fx0 * fx1 >= 0: # kitchen sink approach
-                    range_for_fx = np.arange(-10000, 10000, 0.1)
-                    fx_out = np.array([f(x) for x in range_for_fx]).flatten()
-                    x0 = range_for_fx[np.where(fx_out == fx_out.min())[0]]
-                    sorted_fx_out = np.sort(fx_out)
-                    x1 = sorted_fx_out[np.where(sorted_fx_out > 0)[0][0]]
-
-        ge_brent = brentq(f, x0, x1)
-        if ge_brent >= 8:
-            cdf_brent = 0.5 * exp(-(ge_brent**2) / 2)
+        fx_sub = fx[gene_row]
+        roots_list = sympy.real_roots(fx_sub)
+                
+        roots_list = [i.evalf() for i in roots_list]
+                
+        if not roots_list:
+            cdf = 0.5
+        
         else:
-            cdf_brent = 1 - ncdf(ge_brent)
+            desired_root = min([abs(i) for i in roots_list]) # won't this return negative roots?
 
-        p_vals[gene_row] = cdf_brent
+            if desired_root >=8:
+                cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
+
+            else:
+                cdf = 1 - ncdf(desired_root)
+
+        p_vals[gene_row] = cdf    
 
     return p_vals
 
@@ -336,7 +304,7 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
         k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
         return k2, k3, k4
 
-def cf_coefficients(corrected_fanos,k2,k3,k4,k5 = None):
+def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
     """ Calculate coefficients for Cornish Fisher"""
     
     k2 = np.reshape(k2, (k2.shape[0],))
