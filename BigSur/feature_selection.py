@@ -310,14 +310,14 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
     k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
 
     # Temp code for 5th cumulant
+    # We've had numerical issues in this context, let's cast everything to float64 just for right now
+    subsetmat = dict_for_vars['subsetmat'].astype(np.float64)
 
-    subsetmat = dict_for_vars['subsetmat']
-
-    subsetmatsquare = dict_for_vars["subsetmatsquare"]
-    subsetmatcube = dict_for_vars["subsetmatcube"]
-    subsetmatfourth = dict_for_vars["subsetmatfourth"]
-    chi = dict_for_vars["chi"]
-    n = dict_for_vars['n_cells']
+    subsetmatsquare = dict_for_vars["subsetmatsquare"].astype(np.float64)
+    subsetmatcube = dict_for_vars["subsetmatcube"].astype(np.float64)
+    subsetmatfourth = dict_for_vars["subsetmatfourth"].astype(np.float64)
+    chi = np.array(dict_for_vars["chi"], dtype=np.float64)
+    n = np.array(dict_for_vars['n_cells'], dtype=np.float64)
     
     k5 = np.sum(1/(subsetmatfourth * (n + subsetmat * n * (-1 + chi))**5) * (1 + 
     subsetmat * (-25 + 511 * chi) + 
@@ -354,7 +354,6 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
        40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 
        10 * chi**36 + chi**45)))
 
-    #k5 = 1.0
     return k2, k3, k4, k5
 
 def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
