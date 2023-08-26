@@ -160,9 +160,10 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
 
 def find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5):
     """Take moments and find p values for each corrected fano"""
-    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5) # function will take k5 and return c5 eventually
+    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
     x = sympy.symbols("x")
-    fx = c1 + c2*x +c3*x**2 +c4*x**3 #+c5*x**4 # This line takes forever for some reason
+    fx = c1 + c2*x +c3*x**2 +c4*x**3 +c5*x**4 # This line takes forever for some reason
+    # Parallelize below:
     for gene_row in range(corrected_fanos.shape[0]):
         fx_sub = fx[gene_row]
         roots_list = sympy.real_roots(fx_sub)
