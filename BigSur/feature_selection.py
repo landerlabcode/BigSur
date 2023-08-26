@@ -121,11 +121,11 @@ def calculate_p_value(
 ):
     """Calculate the p value for corrected fanos"""
 
-    p_vals, k2, k3, k4 = find_moments(
+    p_vals, k2, k3, k4, k5 = find_moments(
         raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs
     )
 
-    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
+    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5)
 
     # FDR correct:
     meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
@@ -148,13 +148,15 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
         
     outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
-    k2, k3, k4 = np.split(outs, 3, axis=1)
+    k2, k3, k4, k5 = np.split(outs, 4, axis=1)
 
-    return p_vals, k2, k3, k4
+    # Fix k dtype 
 
-def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
+    return p_vals, k2, k3, k4, k5
+
+def find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5):
     """Take moments and find p values for each corrected fano"""
-    c1, c2, c3, c4 = cf_coefficients(corrected_fanos, k2, k3, k4) # function will take k5 and return c5 eventually
+    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5) # function will take k5 and return c5 eventually
     x = sympy.symbols("x")
     fx = c1 + c2*x +c3*x**2 +c4*x**3 #+c5*x**4 # This line takes forever for some reason
     for gene_row in range(corrected_fanos.shape[0]):
@@ -180,36 +182,36 @@ def find_pvals(corrected_fanos, p_vals, k2, k3, k4):
     return p_vals
 
 def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
-        # Determine whether using pvals or n top genes or min_fano or combo thereof
-        is_n_genes = type(n_genes_for_PCA) == int
-        is_p_val_cutoff = isinstance(p_val_cutoff, float)
-        is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
+    # Determine whether using pvals or n top genes or min_fano or combo thereof
+    is_n_genes = type(n_genes_for_PCA) == int
+    is_p_val_cutoff = isinstance(p_val_cutoff, float)
+    is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
 
-        if not is_n_genes and not is_p_val_cutoff and not is_min_fano_cutoff:
-            raise Exception(
-                "Please specify either number of top genes or pvalue cutoff or min fano quantile cutoff."
-            )
+    if not is_n_genes and not is_p_val_cutoff and not is_min_fano_cutoff:
+        raise Exception(
+            "Please specify either number of top genes or pvalue cutoff or min fano quantile cutoff."
+        )
 
-        if verbose >= 1:
-            print_string = "Using"
-            n_of_ands = 0
-            if is_n_genes:
-                print_string += f" {n_genes_for_PCA} top genes"
-                n_of_ands += 1
-            if is_p_val_cutoff:
-                if n_of_ands == 1:
-                    print_string += f" and {p_val_cutoff} for pvalue cutoff"
-                else:
-                    print_string += f" {p_val_cutoff} for pvalue cutoff"
-                n_of_ands += 1
-            if is_min_fano_cutoff:
-                if n_of_ands > 0:
-                    print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
-                else:
-                    print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
-            print_string += " for highly variable genes."        
-            
-            print(print_string)
+    if verbose >= 1:
+        print_string = "Using"
+        n_of_ands = 0
+        if is_n_genes:
+            print_string += f" {n_genes_for_PCA} top genes"
+            n_of_ands += 1
+        if is_p_val_cutoff:
+            if n_of_ands == 1:
+                print_string += f" and {p_val_cutoff} for pvalue cutoff"
+            else:
+                print_string += f" {p_val_cutoff} for pvalue cutoff"
+            n_of_ands += 1
+        if is_min_fano_cutoff:
+            if n_of_ands > 0:
+                print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
+            else:
+                print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
+        print_string += " for highly variable genes."        
+        
+        print(print_string)
 
 def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
     is_n_genes = type(n_genes_for_PCA) == int
@@ -244,65 +246,112 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
     return genes
 
 def do_loop_ks_calculation(dict_for_vars, gene_row):
-        dict_for_vars['subsetemat'] = dict_for_vars['emat'][gene_row,:]
+    dict_for_vars['subsetmat'] = dict_for_vars['emat'][gene_row,:]
 
-        dict_for_vars["subsetematsquare"] = ne.evaluate(
-        "subsetemat**2", dict_for_vars)
-        dict_for_vars["subsetematcube"] = ne.evaluate(
-            "subsetemat**3", dict_for_vars)
-        dict_for_vars["subsetmatfourth"] = ne.evaluate(
-            "subsetemat**4", dict_for_vars)
+    dict_for_vars["subsetmatsquare"] = ne.evaluate(
+    "subsetmat**2", dict_for_vars)
+    dict_for_vars["subsetmatcube"] = ne.evaluate(
+        "subsetmat**3", dict_for_vars)
+    dict_for_vars["subsetmatfourth"] = ne.evaluate(
+        "subsetmat**4", dict_for_vars)
 
-        dict_for_vars["p1"] = ne.evaluate(
-            "1+subsetemat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetemat+(-3+6*chi-4*chi**3+chi**6)*subsetematsquare)",
-            dict_for_vars,
-        )
-        dict_for_vars["p2"] = ne.evaluate(
-            "subsetemat*(n_cells+n_cells*(-1+chi)*subsetemat)**2", dict_for_vars
-        )
-        dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
-        dict_for_vars["p4"] = ne.evaluate(
-            "(1+subsetemat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetemat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetematsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetematcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**3)",
-            dict_for_vars,
-        )
+    dict_for_vars["p1"] = ne.evaluate(
+        "1+subsetmat*(-4+7*chi+6*(1-2*chi+chi**3)*subsetmat+(-3+6*chi-4*chi**3+chi**6)*subsetmatsquare)",
+        dict_for_vars,
+    )
+    dict_for_vars["p2"] = ne.evaluate(
+        "subsetmat*(n_cells+n_cells*(-1+chi)*subsetmat)**2", dict_for_vars
+    )
+    dict_for_vars["p3"] = ne.evaluate("n_cells*p2", dict_for_vars)
+    dict_for_vars["p4"] = ne.evaluate(
+        "(1+subsetmat*(-6+31*chi+15*(1-6*chi+6*chi**3)*subsetmat+5*(-4+21*chi-30*chi**3+13*chi**6)*subsetmatsquare+15*(1-4*chi+6*chi**3-4*chi**6+chi**10)*subsetmatcube+(-5+15*chi-20*chi**3+15*chi**6-6*chi**10+chi**15)*subsetmatfourth))/(subsetmatsquare*(n_cells+n_cells*(-1+chi)*subsetmat)**3)",
+        dict_for_vars,
+    )
 
-        dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
-        dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
-        dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
+    dict_for_vars["sump1p2"] = ne.evaluate("sum(p1/p2)", dict_for_vars)
+    dict_for_vars["sump1p3"] = ne.evaluate("sum(p1/p3)", dict_for_vars)
+    dict_for_vars["sump4"] = ne.evaluate("sum(p4)", dict_for_vars)
 
-        g1 = 1
+    g1 = 1
 
-        g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
+    g2 = ne.evaluate("1-1/n_cells+sump1p2", dict_for_vars)
 
-        g3 = ne.evaluate(
-            "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
-        )
+    g3 = ne.evaluate(
+        "1-2/(n_cells**2)-3/n_cells+3*sump1p2-3*sump1p3 + sump4", dict_for_vars
+    )
 
-        dict_for_vars["sum1"] = ne.evaluate(
-            "sum(p1/(n_cells**2*p2))", dict_for_vars
-        )
-        dict_for_vars["sum2"] = ne.evaluate(
-            "sum(p1**2/(subsetematsquare*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
-        dict_for_vars["sum3"] = ne.evaluate(
-            "sum(p4/n_cells)", dict_for_vars)
-        dict_for_vars["sum4"] = ne.evaluate(
-            "sum((1+subsetemat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetemat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetematsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetematcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetemat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetemat**6))/(subsetematcube*(n_cells+n_cells*(-1+chi)*subsetemat)**4))",
-            dict_for_vars,
-        )
+    dict_for_vars["sum1"] = ne.evaluate(
+        "sum(p1/(n_cells**2*p2))", dict_for_vars
+    )
+    dict_for_vars["sum2"] = ne.evaluate(
+        "sum(p1**2/(subsetmatsquare*(n_cells+n_cells*(-1+chi)*subsetmat)**4))",
+        dict_for_vars,
+    )
+    dict_for_vars["sum3"] = ne.evaluate(
+        "sum(p4/n_cells)", dict_for_vars)
+    dict_for_vars["sum4"] = ne.evaluate(
+        "sum((1+subsetmat*(-8+127*chi+14*(2-36*chi+69*chi**3)*subsetmat+7*(-8+124*chi-344*chi**3+243*chi**6)*subsetmatsquare+70*(1-12*chi+36*chi**3-40*chi**6+15*chi**10)*subsetmatcube+14*(-4+35*chi-100*chi**3+130*chi**6-80*chi**10+19*chi**15)*subsetmatfourth+28*(1-6*chi+15*chi**3-20*chi**6+15*chi**10-6*chi**15+chi**21)*subsetmat**5+(-7+28*chi-56*chi**3+70*chi**6-56*chi**10+28*chi**15-8*chi**21+chi**28)*subsetmat**6))/(subsetmatcube*(n_cells+n_cells*(-1+chi)*subsetmat)**4))",
+        dict_for_vars,
+    )
 
-        g4 = ne.evaluate(
-            "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
-            dict_for_vars,
-        )
+    g4 = ne.evaluate(
+        "1-6/(n_cells**3)+11/(n_cells**2)-6/n_cells+(6*(-1+n_cells)*sump1p2)/n_cells+3*(sump1p2)**2+12*sum1-12*sump1p3-3*sum2+4*sump4-4*sum3+sum4",
+        dict_for_vars,
+    )
 
-        k2 = -(g1**2) + g2
+    k2 = -(g1**2) + g2
 
-        k3 = 2 * g1**3 - 3 * g1 * g2 + g3
+    k3 = 2 * g1**3 - 3 * g1 * g2 + g3
 
-        k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
-        return k2, k3, k4
+    k4 = -6 * g1**4 + 12 * g1**2 * g2 - 3 * g2**2 - 4 * g1 * g3 + g4
+
+    # Temp code for 5th cumulant
+
+    subsetmat = dict_for_vars['subsetmat']
+
+    subsetmatsquare = dict_for_vars["subsetmatsquare"]
+    subsetmatcube = dict_for_vars["subsetmatcube"]
+    subsetmatfourth = dict_for_vars["subsetmatfourth"]
+    chi = dict_for_vars["chi"]
+    n = dict_for_vars['n_cells']
+    
+    k5 = np.sum(1/(subsetmatfourth * (n + subsetmat * n * (-1 + chi))**5) * (1 + 
+    subsetmat * (-25 + 511 * chi) + 
+    30 * subsetmatsquare * (8 - 119 * chi + 311 * chi**3) + 
+    5 * subsetmatcube * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 
+       6821 * chi**6) + 
+    subsetmatfourth * (3904 - 29880 * chi + 15690 * chi**2 + 
+       68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 
+       42525 * chi**10) + 
+    subsetmat**5 * (-7872 + 49360 * chi - 39660 * chi**2 - 
+       81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 
+       13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 
+    20 * subsetmat**6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 
+       3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 
+       240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 
+       1390 * chi**15 + 294 * chi**21) + 
+    10 * subsetmat**7 * (-832 + 4288 * chi - 5136 * chi**2 - 
+       2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 
+       2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 
+       2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 
+       1420 * chi**15 - 140 * chi**16 - 476 * chi**21 + 
+       75 * chi**28) + 
+    5 * subsetmat**8 * (768 - 3840 * chi + 5184 * chi**2 + 1152 * chi**3 - 
+       5656 * chi**4 + 1728 * chi**5 - 936 * chi**6 + 2432 * chi**7 - 
+       420 * chi**8 - 960 * chi**9 + 1448 * chi**10 - 912 * chi**11 + 
+       186 * chi**12 + 192 * chi**13 - 720 * chi**15 + 
+       170 * chi**16 - 12 * chi**18 + 288 * chi**21 - 28 * chi**22 - 
+       73 * chi**28 + 9 * chi**36) + 
+    subsetmat**9 * (-768 + 3840 * chi - 5760 * chi**2 + 320 * chi**3 + 
+       5280 * chi**4 - 2536 * chi**5 + 560 * chi**6 - 2240 * chi**7 + 
+       840 * chi**8 + 980 * chi**9 - 1072 * chi**10 + 880 * chi**11 - 
+       300 * chi**12 - 210 * chi**13 + 400 * chi**15 - 
+       180 * chi**16 + 20 * chi**17 + 40 * chi**18 - 170 * chi**21 + 
+       40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 
+       10 * chi**36 + chi**45)))
+
+    #k5 = 1.0
+    return k2, k3, k4, k5
 
 def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
     """ Calculate coefficients for Cornish Fisher"""
@@ -310,13 +359,13 @@ def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
     k2 = np.reshape(k2, (k2.shape[0],))
     k3 = np.reshape(k3, (k3.shape[0],))
     k4 = np.reshape(k4, (k4.shape[0],))
-    #k5 = np.reshape(k5, (k5.shape[0],))
+    k5 = np.reshape(k5, (k5.shape[0],))
     
     
     c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
-    c2 = np.sqrt(k2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
+    c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
     c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
     c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
-    #c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
+    c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
     
-    return c1, c2, c3, c4, #c5
+    return c1, c2, c3, c4, c5
