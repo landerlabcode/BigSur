@@ -224,7 +224,7 @@ def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
 # UX functions
 
 def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
-    # Determine whether using pvals or n top genes or min_fano or combo thereof
+    '''Determine whether using pvals or n top genes or min_fano or combo thereof'''
     is_n_genes = type(n_genes_for_PCA) == int
     is_p_val_cutoff = isinstance(p_val_cutoff, float)
     is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
