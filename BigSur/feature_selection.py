@@ -65,7 +65,7 @@ def mcfano_feature_selection(
         if verbose >= 1:
             print(f'After fitting, cv = {cv}')
     # Calculate residuals
-    cv, normlist, residuals, n_cells = calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts)
+    cv, normlist, residuals, n_cells = calculate_residuals(cv, raw_count_mat, g_counts)
     # Calculate mcfanos from residuals
     corrected_fanos = calculate_mcfano(residuals, n_cells)
 
