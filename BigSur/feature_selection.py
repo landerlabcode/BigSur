@@ -84,7 +84,7 @@ def mcfano_feature_selection(
         tic = time.perf_counter()
         if verbose > 1:
             print("Calculating p-values.")
-        meets_cutoff, p_vals_corrected, p_vals = calculate_p_value(
+        p_vals_corrected, p_vals = calculate_p_value(
             raw_count_mat, cv, means, normlist, corrected_fanos, p_val_cutoff, n_jobs
         )
         toc = time.perf_counter()
@@ -119,7 +119,7 @@ def mcfano_feature_selection(
 def calculate_p_value(
     raw_count_mat, cv, means, normlist, corrected_fanos, cutoff, n_jobs
 ):
-    """Calculate the p-value for corrected fanos"""
+    """Calculate the p-value for corrected fanos. First calculate cumulants of gene distributions, then calculate the 4th order Cornish Fisher polynomial, then solve for the root of the CF."""
 
     k2, k3, k4, k5 = find_cumulants(
         raw_count_mat, cv, means, normlist, n_jobs
@@ -127,12 +127,12 @@ def calculate_p_value(
 
     c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
 
-    p_vals = find_pvals(c1, c2, c3, c4, c5)
+    p_vals = solve_CF(c1, c2, c3, c4, c5)
 
     # FDR correct:
-    meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
+    _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
 
-    return meets_cutoff, p_vals_corrected, p_vals
+    return p_vals_corrected, p_vals
 
 def find_cumulants(raw_count_mat, cv, means, normlist, n_jobs):
     """Find cumulants for each gene distribution."""
@@ -154,32 +154,28 @@ def find_cumulants(raw_count_mat, cv, means, normlist, n_jobs):
     k2 = k2.flatten()
     k3 = k3.flatten()
     k4 = k4.flatten()
-    k5 = k5.flatten() 
+    k5 = k5.flatten()
 
     return k2, k3, k4, k5
 
-def find_pvals(c1, c2, c3, c4, c5):
-    """Find p values for each corrected fano"""
+def solve_CF(c1, c2, c3, c4, c5):
+    """Solve CF polynomial and find p values for each corrected fano."""
     coefficients = np.stack((c1, c2, c3, c4, c5), axis=1)
     p_vals = np.empty(coefficients.shape[0])
     for gene_row in range(coefficients.shape[0]):
         p = Polynomial(coefficients[gene_row,:])
         complex_roots = p.roots()
-        real_roots = complex_roots[np.isreal(complex_roots)].real
-                
+        real_roots = complex_roots[np.isreal(complex_roots)].real   
         if real_roots.shape[0] == 0: ## If there are no real roots, set pvalue to 0.5
             cdf = 0.5
-        
         else:
             desired_root = min([abs(i) for i in real_roots]) # won't this return negative roots?
-
             if desired_root >=8:
                 cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
-
             else:
                 cdf = 1 - ncdf(desired_root)
 
-        p_vals[gene_row] = cdf    
+        p_vals[gene_row] = cdf
 
     return p_vals
 
@@ -211,7 +207,7 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
     return k2, k3, k4, k5
 
 def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
-    """ Calculate coefficients for Cornish Fisher"""
+    """ Calculate coefficients for Cornish Fisher polynomial"""
 
     c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
     c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))

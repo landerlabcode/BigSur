@@ -37,18 +37,14 @@ def make_vars_and_qc(adata, layer):
     return raw_count_mat, means, variances, g_counts
 
 
-def calculate_residuals(cv, verbose, raw_count_mat, means, variances, g_counts):
-    """This function calculates the corrected fano factors"""
-    # Estimate the coefficient of variation if one is not supplied
-
-    # Correcting for differential read depth among cells (calculating cell-specific expected gene means)
+def calculate_residuals(cv, raw_count_mat, g_counts):
+    """Calculate the corrected fano factors."""
+    # Correct for differential read depth among cells (calculating cell-specific expected gene means)
     total_umi = np.array(raw_count_mat.sum(axis=1)).flatten()
     normlist = total_umi / raw_count_mat.sum()
     # Modify Fano factors by accounting for differential read depth and dividing 1+c^2*mu
     n_cells = normlist.shape[0]
-
     outerproduct = np.outer(normlist, g_counts)
-
     dense = raw_count_mat.toarray()
     residuals = ne.evaluate(
         "(dense-outerproduct)/(outerproduct*(1+outerproduct*cv**2))**(1/2)",
@@ -71,7 +67,7 @@ def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, m
     for cv_try in np.arange(0.05, 1.05, 0.05):
         cv_try = np.round(cv_try, 3)
         cv_try, normlist, residuals, n_cells = calculate_residuals(
-            cv_try, verbose, subset_raw_count_mat, subset_means, subset_variances, subset_g_counts
+            cv_try, subset_raw_count_mat, subset_g_counts
         )
 
         corrected_fanos = calculate_mcfano(residuals, n_cells)
