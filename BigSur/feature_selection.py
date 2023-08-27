@@ -10,6 +10,7 @@ import time
 import sympy
 import numpy as np
 from scipy.optimize import brentq
+from numpy.polynomial import Polynomial
 from anndata import AnnData
 from mpmath import ncdf, exp
 import numexpr as ne
@@ -160,21 +161,18 @@ def find_moments(raw_count_mat, cv, means, normlist, n_jobs):
 
 def find_pvals(c1, c2, c3, c4, c5):
     """Find p values for each corrected fano"""
-    x = sympy.symbols("x")
     p_vals = np.empty(c1.shape[0])
-    fx = c1 + c2*x +c3*x**2 +c4*x**3 +c5*x**4 # This line takes forever for some reason
-    # Parallelize below:
+    coefficients = np.stack((c1, c2, c3, c4, c5), axis=1)
     for gene_row in range(c1.shape[0]):
-        fx_sub = fx[gene_row]
-        roots_list = sympy.real_roots(fx_sub)
+        p = Polynomial(coefficients[gene_row,:])
+        complex_roots = p.roots()
+        real_roots = complex_roots[np.isreal(complex_roots)].real
                 
-        roots_list = [i.evalf() for i in roots_list]
-                
-        if not roots_list:
+        if real_roots.shape[0] == 0: ## If there are no real roots, set pvalue to 0.5
             cdf = 0.5
         
         else:
-            desired_root = min([abs(i) for i in roots_list]) # won't this return negative roots?
+            desired_root = min([abs(i) for i in real_roots]) # won't this return negative roots?
 
             if desired_root >=8:
                 cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
