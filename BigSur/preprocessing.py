@@ -53,12 +53,11 @@ def calculate_residuals(cv, raw_count_mat, g_counts):
     return cv, normlist, residuals, n_cells
 
 
-def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, max_mean = 100):
+def fit_cv(raw_count_mat, means, g_counts, verbose, min_mean = 0.1, max_mean = 100):
     '''Fits CV to genes with means > min_mean and means < max_min. Slope of linear fit in mcFano vs mean should be 0, so try different CVs and pick the CV with slope closest to zero.'''
 
     log_vec = np.logical_and(means > min_mean , means < max_mean)
     subset_means = means[log_vec]
-    subset_variances = variances[log_vec]
     subset_g_counts = g_counts[log_vec]
     subset_raw_count_mat = raw_count_mat[:, log_vec]
 
@@ -93,6 +92,7 @@ def fit_cv(raw_count_mat, means, variances, g_counts, verbose, min_mean = 0.1, m
     return cv
 
 def calculate_mcfano(residuals, n_cells):
+    '''Calculate modified corrected Fano factors.'''
     squared_residuals = residuals**2
     corrected_fanos = 1 / (n_cells - 1) * np.sum(squared_residuals, axis=0)
     corrected_fanos = np.array(corrected_fanos).flatten()

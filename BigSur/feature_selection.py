@@ -247,8 +247,7 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
                 print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
             else:
                 print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
-        print_string += " for highly variable genes."        
-        
+        print_string += " for highly variable genes."
         print(print_string)
 
 def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
