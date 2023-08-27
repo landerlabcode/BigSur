@@ -20,6 +20,9 @@ def make_vars_and_qc(adata, layer):
     else:
         raw_count_mat = adata.layers[layer].copy()
 
+    # We've had issues with numerical precision, so we cast everything to float64
+    raw_count_mat = raw_count_mat.astype(np.float64)
+
     means, variances = mean_variance_axis(raw_count_mat, axis=0)
     g_counts = np.asarray(raw_count_mat.sum(axis=0)).flatten()
 
@@ -27,8 +30,8 @@ def make_vars_and_qc(adata, layer):
     ### Check if any means == 0, probably means QC was not done
     if np.any(means == 0):
         raise Exception("Zero means were found, run QC steps before calculating mFF.")
+    
     ### Check if integer data was passed, if not probably passed normalized data
-
     if any(g_counts.astype(int) != g_counts):
         raise Exception("This function takes raw counts, normalized data was passed.")
     return raw_count_mat, means, variances, g_counts
