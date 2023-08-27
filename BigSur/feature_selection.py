@@ -61,7 +61,7 @@ def mcfano_feature_selection(
     if cv is None:
         if verbose > 1:
             print('Fitting cv.')
-        cv = fit_cv(raw_count_mat, means, variances, g_counts, verbose)
+        cv = fit_cv(raw_count_mat, means, g_counts, verbose)
         if verbose >= 1:
             print(f'After fitting, cv = {cv}')
     # Calculate residuals
