@@ -121,18 +121,20 @@ def calculate_p_value(
 ):
     """Calculate the p value for corrected fanos"""
 
-    p_vals, k2, k3, k4, k5 = find_moments(
-        raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs
+    k2, k3, k4, k5 = find_moments(
+        raw_count_mat, cv, means, normlist, n_jobs
     )
 
-    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5)
+    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
+
+    p_vals = find_pvals(c1, c2, c3, c4, c5)
 
     # FDR correct:
     meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
 
     return meets_cutoff, p_vals_corrected, p_vals
 
-def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
+def find_moments(raw_count_mat, cv, means, normlist, n_jobs):
     """Find moments for each gene distribution"""
     wlist = len(normlist) * normlist
 
@@ -142,8 +144,6 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     # Calculating moments from expected distribution of Fano factors per cell
     chi = 1 + cv**2
     n_cells = raw_count_mat.shape[0]
-    p_vals = np.empty(corrected_fanos.shape[0])
-    # Don't calculate p_vals for genes below cutoff
 
     dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
         
@@ -156,15 +156,15 @@ def find_moments(raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs):
     k4 = k4.flatten()
     k5 = k5.flatten() 
 
-    return p_vals, k2, k3, k4, k5
+    return k2, k3, k4, k5
 
-def find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5):
-    """Take moments and find p values for each corrected fano"""
-    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
+def find_pvals(c1, c2, c3, c4, c5):
+    """Find p values for each corrected fano"""
     x = sympy.symbols("x")
+    p_vals = np.empty(c1.shape[0])
     fx = c1 + c2*x +c3*x**2 +c4*x**3 +c5*x**4 # This line takes forever for some reason
     # Parallelize below:
-    for gene_row in range(corrected_fanos.shape[0]):
+    for gene_row in range(c1.shape[0]):
         fx_sub = fx[gene_row]
         roots_list = sympy.real_roots(fx_sub)
                 
