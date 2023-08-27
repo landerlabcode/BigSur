@@ -7,7 +7,7 @@ Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is a prin
 * The feature selection derivations are detailed in Dollinger and Silkwood et al. 2023 (on bioRxiv soon!).
 
 # Installation
-The only way to install BigSur currently is to clone the GitHub repo. We've included an environment.yml file for [conda installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath). 
+The only way to install BigSur currently is to clone the GitHub repo. We've included an environment.yml file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr).
 For example:
 
 In terminal:
