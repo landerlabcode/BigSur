@@ -122,11 +122,11 @@ def calculate_p_value(
 ):
     """Calculate the p value for corrected fanos"""
 
-    p_vals, k2, k3, k4 = find_moments(
+    p_vals, k2, k3, k4, k5 = find_moments(
         raw_count_mat, cv, means, normlist, corrected_fanos, n_jobs
     )
 
-    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4)
+    p_vals = find_pvals(corrected_fanos, p_vals, k2, k3, k4, k5)
 
     # FDR correct:
     meets_cutoff, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
