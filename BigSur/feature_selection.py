@@ -169,7 +169,9 @@ def solve_CF(c1, c2, c3, c4, c5):
         if real_roots.shape[0] == 0: ## If there are no real roots, set pvalue to 0.5
             cdf = 0.5
         else:
-            desired_root = min([abs(i) for i in real_roots])
+            abs_roots = [abs(i) for i in real_roots]
+            min_root = min(abs_roots)
+            desired_root = [i for i in real_roots][abs_roots.index(min_root)]
             if desired_root >=8:
                 cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
             else:
