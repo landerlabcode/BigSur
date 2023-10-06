@@ -15,6 +15,9 @@ import numexpr as ne
 import warnings
 from statsmodels.stats.multitest import fdrcorrection
 from joblib import Parallel, delayed
+from sklearn.metrics import silhouette_score
+import scanpy as sc
+import pandas as pd
 from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano
 
 warnings.simplefilter('always', UserWarning)
@@ -283,3 +286,53 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
         print(f'Setting {genes.shape[0]} genes as highly variable.')
 
     return genes
+
+def mcfano_optimization(adata, pval, n_jobs=8, quantile_range = None):
+    '''
+    Over a range of mcFanos with fixed p-value, calculate silhouette score from resulting clusters.
+    
+    Parameters
+    ----------
+    adata - adata object containing information about the raw counts and gene names.
+    layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
+    cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
+    n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
+    min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
+    p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
+    return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
+    n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
+    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
+    '''
+    if quantile_range is None:
+        quantile_range = np.round(np.arange(0.7, 0.996, 0.001), 4)
+    def do_loop_mcfano_optimization(adata, fano_cutoff, pval):
+        logvec = np.logical_and(adata.var['mc_Fano'] > adata.var['mc_Fano'].quantile(fano_cutoff), adata.var['FDR_adj_pvalue'] < pval)
+        adata.var['highly_variable'] = False
+        adata.var.loc[logvec,'highly_variable'] = True
+        n_genes = np.sum(logvec)
+        # Calculate clusters
+        try:
+            sc.pp.pca(adata)
+        except ValueError:
+            return np.nan, np.nan, pval, fano_cutoff, n_genes
+        sc.pp.neighbors(adata)
+        sc.tl.leiden(adata)
+        
+        score_silhouette = silhouette_score(adata.obsm['X_pca'], adata.obs['leiden'], metric='cosine')
+        n_clusters = adata.obs['leiden'].unique().shape[0]
+        normalized_silhouette_score = score_silhouette/n_clusters
+        
+        return score_silhouette, normalized_silhouette_score, pval, fano_cutoff, n_genes, n_clusters
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message = 'A worker stopped while some jobs were given to the executor.')
+        outs = np.array(Parallel(n_jobs=n_jobs, timeout=None)(delayed(do_loop_mcfano_optimization)(adata, fano_cutoff, pval) for fano_cutoff in quantile_range))
+
+    score_silhouette, normalized_silhouette_score, pval, fano_cutoff, n_genes, n_clusters = np.split(outs, 6, axis=1)
+
+    df_silhouette_score = pd.DataFrame(data={'Quantile':fano_cutoff.flatten(), 'Normalized silhouette score':normalized_silhouette_score.flatten(), 'Silhouette score':score_silhouette.flatten(), 'Number of genes':n_genes, 'Number of clusters':n_clusters})
+
+    max_loc = df_silhouette_score.loc[np.where(df_silhouette_score['Normalized silhouette score'] == df_silhouette_score['Normalized silhouette score'].max())[0]]
+
+    print(f'Max normalized silhouette score is {max_loc["Normalized silhouette score"]} with mcfano quantile of {max_loc["Quantile"]}')
+
+    return df_silhouette_score
