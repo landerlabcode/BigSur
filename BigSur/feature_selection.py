@@ -5,7 +5,7 @@ Created on Wed Oct  5 09:55:15 2022
 
 @author: emmanueldollinger
 """
-from typing import Union
+from typing import Union, Iterable
 import time
 import numpy as np
 from numpy.polynomial import Polynomial
@@ -30,6 +30,7 @@ def mcfano_feature_selection(
     n_genes_for_PCA: Union[bool, int] = False,
     min_mcfano_cutoff: Union[bool, float] = 0.99,
     p_val_cutoff: Union[bool, float] = 1e-3,
+    quantile_range: Union[None, Iterable] = None,
     return_residuals: bool = False,
     n_jobs: int = -2,
     verbose: int = 1,
@@ -45,6 +46,7 @@ def mcfano_feature_selection(
     n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
     min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
+    quantile_range - [None, Iterable], if min_mcfano_cutoff is False then function will calculate normalized silhouette score based on clustering from different mcFano quantiles. If variable is None then default range is np.arange(0.7, 0.996, 0.001). Range can be specified.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
@@ -103,7 +105,7 @@ def mcfano_feature_selection(
         if verbose > 1:
             print("Skipping p-value calculation.")
             
-    genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose)
+    genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose)
     adata.var["highly_variable"] = False
     adata.var.loc[genes, "highly_variable"] = True
     if verbose > 1:
@@ -255,7 +257,7 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
         print_string += " for highly variable genes."
         print(print_string)
 
-def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
+def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose):
     is_n_genes = type(n_genes_for_PCA) == int
     is_p_val_cutoff = isinstance(p_val_cutoff, float)
     is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
@@ -265,10 +267,14 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
 
     if is_min_fano_cutoff:
         min_fano = np.quantile(adata_var_df['mc_Fano'], min_mcfano_cutoff)
-        if verbose > 1:
-            print(f'Setting min_fano to {min_fano:.4f}.')
     else:
-        min_fano = 0
+        if verbose > 0:
+            print('Running mcfano optimization')
+        df_silhouette_score, min_mcfano_cutoff = mcfano_optimization(adata, p_val_cutoff, quantile_range, n_jobs, verbose)
+        min_fano = np.quantile(adata_var_df['mc_Fano'], min_mcfano_cutoff)
+    if verbose > 1:
+        print(f'Setting min_fano to {min_fano:.4f}.')
+    
     genes = adata_var_df[adata_var_df['mc_Fano'] > min_fano].index
     
     if is_p_val_cutoff:
@@ -287,26 +293,16 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verb
 
     return genes
 
-def mcfano_optimization(adata, pval, n_jobs=8, quantile_range = None):
+def mcfano_optimization(adata, p_val_cutoff, quantile_range, n_jobs, verbose):
     '''
     Over a range of mcFanos with fixed p-value, calculate silhouette score from resulting clusters.
-    
-    Parameters
-    ----------
-    adata - adata object containing information about the raw counts and gene names.
-    layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
-    cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
-    n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
-    min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
-    p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
-    return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
-    n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
-    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
     '''
     if quantile_range is None:
         quantile_range = np.round(np.arange(0.7, 0.996, 0.001), 4)
-    def do_loop_mcfano_optimization(adata, fano_cutoff, pval):
-        logvec = np.logical_and(adata.var['mc_Fano'] > adata.var['mc_Fano'].quantile(fano_cutoff), adata.var['FDR_adj_pvalue'] < pval)
+    if p_val_cutoff is False:
+        p_val_cutoff = 1.0
+    def do_loop_mcfano_optimization(adata, fano_cutoff, p_val_cutoff):
+        logvec = np.logical_and(adata.var['mc_Fano'] > adata.var['mc_Fano'].quantile(fano_cutoff), adata.var['FDR_adj_pvalue'] < p_val_cutoff)
         adata.var['highly_variable'] = False
         adata.var.loc[logvec,'highly_variable'] = True
         n_genes = np.sum(logvec)
@@ -314,7 +310,7 @@ def mcfano_optimization(adata, pval, n_jobs=8, quantile_range = None):
         try:
             sc.pp.pca(adata)
         except ValueError:
-            return np.nan, np.nan, pval, fano_cutoff, n_genes
+            return np.nan, np.nan, p_val_cutoff, fano_cutoff, n_genes
         sc.pp.neighbors(adata)
         sc.tl.leiden(adata)
         
@@ -322,17 +318,19 @@ def mcfano_optimization(adata, pval, n_jobs=8, quantile_range = None):
         n_clusters = adata.obs['leiden'].unique().shape[0]
         normalized_silhouette_score = score_silhouette/n_clusters
         
-        return score_silhouette, normalized_silhouette_score, pval, fano_cutoff, n_genes, n_clusters
+        return score_silhouette, normalized_silhouette_score, p_val_cutoff, fano_cutoff, n_genes, n_clusters
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', message = 'A worker stopped while some jobs were given to the executor.')
-        outs = np.array(Parallel(n_jobs=n_jobs, timeout=None)(delayed(do_loop_mcfano_optimization)(adata, fano_cutoff, pval) for fano_cutoff in quantile_range))
+        outs = np.array(Parallel(n_jobs=n_jobs, timeout=None)(delayed(do_loop_mcfano_optimization)(adata, fano_cutoff, p_val_cutoff) for fano_cutoff in quantile_range))
 
-    score_silhouette, normalized_silhouette_score, pval, fano_cutoff, n_genes, n_clusters = np.split(outs, 6, axis=1)
+    score_silhouette, normalized_silhouette_score, p_val_cutoff, fano_cutoff, n_genes, n_clusters = np.split(outs, 6, axis=1)
 
-    df_silhouette_score = pd.DataFrame(data={'Quantile':fano_cutoff.flatten(), 'Normalized silhouette score':normalized_silhouette_score.flatten(), 'Silhouette score':score_silhouette.flatten(), 'Number of genes':n_genes, 'Number of clusters':n_clusters})
+    df_silhouette_score = pd.DataFrame(data={'Quantile':fano_cutoff.flatten(), 'Normalized silhouette score':normalized_silhouette_score.flatten(), 'Silhouette score':score_silhouette.flatten(), 'Number of genes':n_genes.flatten(), 'Number of clusters':n_clusters.flatten()})
 
-    max_loc = df_silhouette_score.loc[np.where(df_silhouette_score['Normalized silhouette score'] == df_silhouette_score['Normalized silhouette score'].max())[0]]
+    max_df = df_silhouette_score.loc[np.where(df_silhouette_score['Normalized silhouette score'] == df_silhouette_score['Normalized silhouette score'].max())[0]]
+    max_normalized_silhouette_score = max_df["Normalized silhouette score"].values[0]
+    quantile_for_max_norm_silhouette = max_df["Quantile"].values[0]
+    if verbose > 0:
+        print(f'Max normalized silhouette score is {max_normalized_silhouette_score} with mcfano quantile of {quantile_for_max_norm_silhouette}')
 
-    print(f'Max normalized silhouette score is {max_loc["Normalized silhouette score"]} with mcfano quantile of {max_loc["Quantile"]}')
-
-    return df_silhouette_score
+    return df_silhouette_score, quantile_for_max_norm_silhouette
