@@ -120,112 +120,7 @@ def mcfano_feature_selection(
     if return_residuals:
         adata.layers['residuals'] = residuals
 
-# p-value functions
-def calculate_p_value(
-    raw_count_mat, cv, means, normlist, corrected_fanos, cutoff, n_jobs
-):
-    """Calculate the p-value for corrected fanos. First calculate cumulants of gene distributions, then calculate the 4th order Cornish Fisher polynomial, then solve for the root of the CF."""
-
-    k2, k3, k4, k5 = find_cumulants(
-        raw_count_mat, cv, means, normlist, n_jobs
-    )
-
-    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
-
-    p_vals = solve_CF(c1, c2, c3, c4, c5)
-
-    # FDR correct:
-    _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
-
-    return p_vals_corrected, p_vals
-
-def find_cumulants(raw_count_mat, cv, means, normlist, n_jobs):
-    """Find cumulants for each gene distribution."""
-    wlist = len(normlist) * normlist
-
-    # Calculating expectation matrix for per-cell gene means
-    emat = np.outer(means, wlist)  # genesxcells
-
-    # Calculating cumulants from expected distribution of Fano factors per cell
-    chi = 1 + cv**2
-    n_cells = raw_count_mat.shape[0]
-
-    dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
-        
-    outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
-    k2, k3, k4, k5 = np.split(outs, 4, axis=1)
-
-    # Fix k shape
-    k2 = k2.flatten()
-    k3 = k3.flatten()
-    k4 = k4.flatten()
-    k5 = k5.flatten()
-
-    return k2, k3, k4, k5
-
-def solve_CF(c1, c2, c3, c4, c5):
-    """Solve CF polynomial and find p values for each corrected fano."""
-    coefficients = np.stack((c1, c2, c3, c4, c5), axis=1)
-    p_vals = np.empty(coefficients.shape[0])
-    for gene_row in range(coefficients.shape[0]):
-        p = Polynomial(coefficients[gene_row,:])
-        complex_roots = p.roots()
-        real_roots = complex_roots[np.isreal(complex_roots)].real   
-        if real_roots.shape[0] == 0: ## If there are no real roots, set pvalue to 0.5
-            cdf = 0.5
-        else:
-            abs_roots = [abs(i) for i in real_roots]
-            min_root = min(abs_roots)
-            desired_root = [i for i in real_roots][abs_roots.index(min_root)]
-            if desired_root >=8:
-                cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
-            else:
-                cdf = 1 - ncdf(desired_root)
-
-        p_vals[gene_row] = cdf
-
-    return p_vals
-
-def do_loop_ks_calculation(dict_for_vars, gene_row):
-    '''Calculate individual cumulants for a gene.'''
-    dict_for_vars['subsetmat'] = dict_for_vars['emat'][gene_row,:]
-
-    dict_for_vars["subsetmat2"] = ne.evaluate(
-    "subsetmat**2", dict_for_vars)
-    dict_for_vars["subsetmat3"] = ne.evaluate(
-        "subsetmat**3", dict_for_vars)
-    dict_for_vars["subsetmat4"] = ne.evaluate(
-        "subsetmat**4", dict_for_vars)
-    dict_for_vars["subsetmat5"] = ne.evaluate(
-        "subsetmat**5", dict_for_vars)
-    dict_for_vars["subsetmat6"] = ne.evaluate(
-        "subsetmat**6", dict_for_vars)
-    dict_for_vars["subsetmat7"] = ne.evaluate(
-        "subsetmat**7", dict_for_vars)
-
-    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
-
-    k3 = ne.evaluate('sum(1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
-
-    k4 = ne.evaluate('sum(1/(subsetmat3 * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmat2 * (92 - 674 * chi + 966 * chi**3) + subsetmat3 * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmat4 * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28)))', dict_for_vars)
-    
-    k5 = ne.evaluate('sum(1/(subsetmat4 * (n_cells + subsetmat * n_cells * (-1 + chi))**5) * (1 + subsetmat * (-25 + 511 * chi) + 30 * subsetmat2 * (8 - 119 * chi + 311 * chi**3) + 5 * subsetmat3 * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 6821 * chi**6) + subsetmat4 * (3904 - 29880 * chi + 15690 * chi**2 + 68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 42525 * chi**10) + subsetmat5 * (-7872 + 49360 * chi - 39660 * chi**2 - 81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 20 * subsetmat6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 1390 * chi**15 + 294 * chi**21) + 10 * subsetmat7 * (-832 + 4288 * chi - 5136 * chi**2 - 2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 1420 * chi**15 - 140 * chi**16 - 476 * chi**21 + 75 * chi**28) + 5 * subsetmat**8 * (768 - 3840 * chi + 5184 * chi**2 + 1152 * chi**3 - 5656 * chi**4 + 1728 * chi**5 - 936 * chi**6 + 2432 * chi**7 - 420 * chi**8 - 960 * chi**9 + 1448 * chi**10 - 912 * chi**11 + 186 * chi**12 + 192 * chi**13 - 720 * chi**15 + 170 * chi**16 - 12 * chi**18 + 288 * chi**21 - 28 * chi**22 - 73 * chi**28 + 9 * chi**36) + subsetmat**9 * (-768 + 3840 * chi - 5760 * chi**2 + 320 * chi**3 + 5280 * chi**4 - 2536 * chi**5 + 560 * chi**6 - 2240 * chi**7 + 840 * chi**8 + 980 * chi**9 - 1072 * chi**10 + 880 * chi**11 - 300 * chi**12 - 210 * chi**13 + 400 * chi**15 - 180 * chi**16 + 20 * chi**17 + 40 * chi**18 - 170 * chi**21 + 40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 10 * chi**36 + chi**45)))', dict_for_vars) # If done with evaluate there's 1e-19 differences with mathematica
-
-    return k2, k3, k4, k5
-
-def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
-    """ Calculate coefficients for Cornish Fisher polynomial"""
-
-    c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
-    c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
-    c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
-    c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
-    c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
-
-    return c1, c2, c3, c4, c5
-
 # UX functions
-
 def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
     '''Determine whether using pvals or n top genes or min_fano or combo thereof'''
     is_n_genes = type(n_genes_for_PCA) == int
@@ -334,3 +229,112 @@ def mcfano_optimization(adata, p_val_cutoff, quantile_range, n_jobs, verbose):
         print(f'Max normalized silhouette score is {max_normalized_silhouette_score} with mcfano quantile of {quantile_for_max_norm_silhouette}')
 
     return df_silhouette_score, quantile_for_max_norm_silhouette
+
+# p-value functions
+## Main p-value function
+def calculate_p_value(
+    raw_count_mat, cv, means, normlist, corrected_fanos, cutoff, n_jobs
+):
+    """Calculate the p-value for corrected fanos. First calculate cumulants of gene distributions, then calculate the 4th order Cornish Fisher polynomial, then solve for the root of the CF."""
+
+    k2, k3, k4, k5 = find_cumulants(
+        raw_count_mat, cv, means, normlist, n_jobs
+    )
+
+    c1, c2, c3, c4, c5 = cf_coefficients(corrected_fanos, k2, k3, k4, k5)
+
+    p_vals = solve_CF(c1, c2, c3, c4, c5)
+
+    # FDR correct:
+    _, p_vals_corrected = fdrcorrection(p_vals, alpha=cutoff)
+
+    return p_vals_corrected, p_vals
+
+## Cumulants main function
+def find_cumulants(raw_count_mat, cv, means, normlist, n_jobs):
+    """Find cumulants for each gene distribution."""
+    wlist = len(normlist) * normlist
+
+    # Calculating expectation matrix for per-cell gene means
+    emat = np.outer(means, wlist)  # genesxcells
+
+    # Calculating cumulants from expected distribution of Fano factors per cell
+    chi = 1 + cv**2
+    n_cells = raw_count_mat.shape[0]
+
+    dict_for_vars = {"chi": chi, "n_cells": n_cells, "emat": emat}
+        
+    outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(dict_for_vars['emat'].shape[0])))
+    k2, k3, k4, k5 = np.split(outs, 4, axis=1)
+
+    # Fix k shape
+    k2 = k2.flatten()
+    k3 = k3.flatten()
+    k4 = k4.flatten()
+    k5 = k5.flatten()
+
+    return k2, k3, k4, k5
+
+## Solve CF polynomial
+def solve_CF(c1, c2, c3, c4, c5):
+    """Solve CF polynomial and find p values for each corrected fano."""
+    coefficients = np.stack((c1, c2, c3, c4, c5), axis=1)
+    p_vals = np.empty(coefficients.shape[0])
+    for gene_row in range(coefficients.shape[0]):
+        p = Polynomial(coefficients[gene_row,:])
+        complex_roots = p.roots()
+        real_roots = complex_roots[np.isreal(complex_roots)].real   
+        if real_roots.shape[0] == 0: ## If there are no real roots, set pvalue to 0.5
+            cdf = 0.5
+        else:
+            abs_roots = [abs(i) for i in real_roots]
+            min_root = min(abs_roots)
+            desired_root = [i for i in real_roots][abs_roots.index(min_root)]
+            if desired_root >=8:
+                cdf = 0.5 * exp(-(np.longdouble(desired_root)**2) / 2)
+            else:
+                cdf = 1 - ncdf(desired_root)
+
+        p_vals[gene_row] = cdf
+
+    return p_vals
+
+## Calculate cumulants
+def do_loop_ks_calculation(dict_for_vars, gene_row):
+    '''Calculate individual cumulants for a gene.'''
+    dict_for_vars['subsetmat'] = dict_for_vars['emat'][gene_row,:]
+
+    dict_for_vars["subsetmat2"] = ne.evaluate(
+    "subsetmat**2", dict_for_vars)
+    dict_for_vars["subsetmat3"] = ne.evaluate(
+        "subsetmat**3", dict_for_vars)
+    dict_for_vars["subsetmat4"] = ne.evaluate(
+        "subsetmat**4", dict_for_vars)
+    dict_for_vars["subsetmat5"] = ne.evaluate(
+        "subsetmat**5", dict_for_vars)
+    dict_for_vars["subsetmat6"] = ne.evaluate(
+        "subsetmat**6", dict_for_vars)
+    dict_for_vars["subsetmat7"] = ne.evaluate(
+        "subsetmat**7", dict_for_vars)
+
+    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
+
+    k3 = ne.evaluate('sum(1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
+
+    k4 = ne.evaluate('sum(1/(subsetmat3 * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmat2 * (92 - 674 * chi + 966 * chi**3) + subsetmat3 * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmat4 * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28)))', dict_for_vars)
+    
+    k5 = ne.evaluate('sum(1/(subsetmat4 * (n_cells + subsetmat * n_cells * (-1 + chi))**5) * (1 + subsetmat * (-25 + 511 * chi) + 30 * subsetmat2 * (8 - 119 * chi + 311 * chi**3) + 5 * subsetmat3 * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 6821 * chi**6) + subsetmat4 * (3904 - 29880 * chi + 15690 * chi**2 + 68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 42525 * chi**10) + subsetmat5 * (-7872 + 49360 * chi - 39660 * chi**2 - 81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 20 * subsetmat6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 1390 * chi**15 + 294 * chi**21) + 10 * subsetmat7 * (-832 + 4288 * chi - 5136 * chi**2 - 2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 1420 * chi**15 - 140 * chi**16 - 476 * chi**21 + 75 * chi**28) + 5 * subsetmat**8 * (768 - 3840 * chi + 5184 * chi**2 + 1152 * chi**3 - 5656 * chi**4 + 1728 * chi**5 - 936 * chi**6 + 2432 * chi**7 - 420 * chi**8 - 960 * chi**9 + 1448 * chi**10 - 912 * chi**11 + 186 * chi**12 + 192 * chi**13 - 720 * chi**15 + 170 * chi**16 - 12 * chi**18 + 288 * chi**21 - 28 * chi**22 - 73 * chi**28 + 9 * chi**36) + subsetmat**9 * (-768 + 3840 * chi - 5760 * chi**2 + 320 * chi**3 + 5280 * chi**4 - 2536 * chi**5 + 560 * chi**6 - 2240 * chi**7 + 840 * chi**8 + 980 * chi**9 - 1072 * chi**10 + 880 * chi**11 - 300 * chi**12 - 210 * chi**13 + 400 * chi**15 - 180 * chi**16 + 20 * chi**17 + 40 * chi**18 - 170 * chi**21 + 40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 10 * chi**36 + chi**45)))', dict_for_vars) # If done with evaluate there's 1e-19 differences with mathematica
+
+    return k2, k3, k4, k5
+
+## Calculate CF coefficients
+def cf_coefficients(corrected_fanos, k2, k3, k4, k5):
+    """ Calculate coefficients for Cornish Fisher polynomial"""
+
+    c1 = 1-corrected_fanos-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)
+    c2 = k2**(1/2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))
+    c3 = k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)
+    c4 = -k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))
+    c5 = k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)
+
+    return c1, c2, c3, c4, c5
