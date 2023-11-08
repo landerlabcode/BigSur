@@ -28,8 +28,8 @@ def mcfano_feature_selection(
     layer: str,
     cv: Union[bool, float] = 0.5,
     n_genes_for_PCA: Union[bool, int] = False,
-    min_mcfano_cutoff: Union[bool, float] = 0.99,
-    p_val_cutoff: Union[bool, float] = 1e-3,
+    min_mcfano_cutoff: Union[bool, float] = 0.95,
+    p_val_cutoff: Union[bool, float] = 1e-2,
     quantile_range: Union[None, Iterable] = None,
     return_residuals: bool = False,
     n_jobs: int = -2,
@@ -44,7 +44,7 @@ def mcfano_feature_selection(
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
     n_genes_for_PCA - [Int, Bool], top number of genes to use for PCA, ranked by corrected modified Fano factor. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
-    min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False default to combination of n_genes_for_PCA and/or p_val_cutoff.
+    min_mcfano_cutoff - Union[bool, float], calculate p-values for corrected modified Fano factors greater than min_mcfano_cutoff quantile and only include these genes in highly_variable column. If False, cutoff is determined by optimizing of silhouette score after filtering genes by p-value.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
     quantile_range - [None, Iterable], if min_mcfano_cutoff is False then function will calculate normalized silhouette score based on clustering from different mcFano quantiles. If variable is None then default range is np.arange(0.7, 0.996, 0.001). Range can be specified.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
