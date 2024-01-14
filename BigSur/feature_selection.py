@@ -153,7 +153,7 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
         print(print_string)
 
 def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose):
-    is_n_genes = type(n_genes_for_PCA) == int
+    is_n_genes = isinstance(n_genes_for_PCA, bool)
     is_p_val_cutoff = isinstance(p_val_cutoff, float)
     is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
 
@@ -176,7 +176,7 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quan
         genes = np.intersect1d(genes, adata_var_df[adata_var_df['FDR_adj_pvalue'] < p_val_cutoff].index)
         genes = adata_var_df.loc[genes].sort_values('mc_Fano', ascending = False).index # Reorder
 
-    if is_n_genes:
+    if not is_n_genes:
         if n_genes_for_PCA > genes.shape[0]:
             warnings.warn(
             f'Number of genes meeting cutoffs ({genes.shape[0]}) is lower than user requested genes ({n_genes_for_PCA}). Only including genes meeting cutoff in "highly_variable" slot. Please increase the min_mcfano_cutoff, decrease the p_val_cutoff, or set either or both to False.')
