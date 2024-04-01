@@ -29,7 +29,7 @@ def mcfano_feature_selection(
     cv: Union[bool, float] = 0.5,
     n_genes_for_PCA: Union[bool, int] = False,
     min_mcfano_cutoff: Union[bool, float] = 0.95,
-    p_val_cutoff: Union[bool, float] = 1e-2,
+    p_val_cutoff: Union[bool, float] = 0.05,
     quantile_range: Union[None, Iterable] = None,
     return_residuals: bool = False,
     n_jobs: int = -2,
@@ -317,7 +317,7 @@ def do_loop_ks_calculation(dict_for_vars, gene_row):
     dict_for_vars["subsetmat7"] = ne.evaluate(
         "subsetmat**7", dict_for_vars)
 
-    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))',dict_for_vars)
+    k2=-(1/dict_for_vars['n_cells'])+ne.evaluate('sum((1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2))', dict_for_vars)
 
     k3 = ne.evaluate('sum(1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15)))', dict_for_vars)
 
