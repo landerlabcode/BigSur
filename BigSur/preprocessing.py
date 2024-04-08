@@ -29,7 +29,7 @@ def make_vars_and_qc(adata, layer):
     ## Checks
     ### Check if any means == 0, probably means QC was not done
     if np.any(means == 0):
-        raise Exception("Zero means were found, run QC steps before calculating mFF.")
+        raise Exception("Zero gene means were found, remove genes with no counts before calculating mcFanos.")
     
     ### Check if integer data was passed, if not probably passed normalized data
     if any(g_counts.astype(int) != g_counts):
@@ -38,19 +38,24 @@ def make_vars_and_qc(adata, layer):
 
 
 def calculate_residuals(cv, raw_count_mat, g_counts):
-    """Calculate the corrected fano factors."""
+    """Calculate the corrected modified residuals ."""
     # Correct for differential read depth among cells (calculating cell-specific expected gene means)
+    normlist, n_cells, e_mat = calculate_emat(raw_count_mat, g_counts)
+    dense = raw_count_mat.toarray()
+    residuals = ne.evaluate(
+        "(dense-e_mat)/(e_mat*(1+e_mat*cv**2))**(1/2)",
+        {"dense": dense, "e_mat": e_mat, "cv": cv},
+    )
+    return cv, normlist, residuals, n_cells
+
+def calculate_emat(raw_count_mat, g_counts):
+    '''Calculate the expectation matrix (e_mat)'''
     total_umi = np.array(raw_count_mat.sum(axis=1)).flatten()
     normlist = total_umi / raw_count_mat.sum()
     # Modify Fano factors by accounting for differential read depth and dividing 1+c^2*mu
     n_cells = normlist.shape[0]
-    outerproduct = np.outer(normlist, g_counts)
-    dense = raw_count_mat.toarray()
-    residuals = ne.evaluate(
-        "(dense-outerproduct)/(outerproduct*(1+outerproduct*cv**2))**(1/2)",
-        {"dense": dense, "outerproduct": outerproduct, "cv": cv},
-    )
-    return cv, normlist, residuals, n_cells
+    e_mat = np.outer(normlist, g_counts)
+    return normlist,n_cells,e_mat
 
 
 def fit_cv(raw_count_mat, means, g_counts, verbose, min_mean = 0.1, max_mean = 100):
