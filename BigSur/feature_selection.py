@@ -28,7 +28,7 @@ def mcfano_feature_selection(
     layer: str,
     cv: Union[bool, float] = 0.5,
     n_genes_for_PCA: Union[bool, int] = False,
-    min_mcfano_cutoff: Union[bool, float] = 0.95,
+    min_mcfano_cutoff: Union[bool, float] = 0.96,
     p_val_cutoff: Union[bool, float] = 0.05,
     quantile_range: Union[None, Iterable] = None,
     return_residuals: bool = False,
