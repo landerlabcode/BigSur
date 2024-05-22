@@ -26,7 +26,7 @@ warnings.simplefilter('always', UserWarning)
 def mcfano_feature_selection(
     adata: AnnData,
     layer: str,
-    cv: Union[bool, float] = 0.5,
+    cv: Union[bool, float] = None,
     n_genes_for_PCA: Union[bool, int] = False,
     min_mcfano_cutoff: Union[bool, float] = 0.96,
     p_val_cutoff: Union[bool, float] = 0.05,
