@@ -104,7 +104,10 @@ def mcfano_feature_selection(
     else:
         if verbose > 1:
             print("Skipping p-value calculation.")
-            
+    
+    if verbose == 2:
+        suggest_cutoffs(adata, layer)
+
     genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose)
     adata.var["highly_variable"] = False
     adata.var.loc[genes, "highly_variable"] = True
@@ -151,6 +154,38 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
                 print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
         print_string += " for highly variable genes."
         print(print_string)
+
+def suggest_cutoffs(adata, layer):
+    '''Suggests cutoffs, based on statistics of the dataset. These cutoffs are merely starting points; the optimal cutoff will depend on unknowables.'''
+    # First, calculate median UMI/cell and number of cells
+    number_of_cells = adata.shape[0]
+    median_umi_per_cell = np.median(np.array(adata.layers[layer].sum(axis = 1)).flatten())
+
+    # Now, calculate the percent of mcFanos that are significant
+    percent_of_significant_mcfanos = int(np.round(np.sum(adata.var['FDR_adj_pvalue'] < 0.05) / adata.shape[1] * 100, 0))
+
+    # Determine suggested cutoff
+    ## If the dataset is shallowly sequenced or if there aren't enough cells, suggest 10%
+    if (median_umi_per_cell < 3000) or (number_of_cells < 150):
+        suggested_cutoff = ['10%', '0.9']
+        dataset_quality = 'poor'
+    
+    ## If the dataset is sequenced enough, and there are enough cells, consider the percent of mcFanos that are significant
+    else:
+        dataset_quality = 'high'
+        if percent_of_significant_mcfanos > 5:
+            suggested_cutoff = ['10%', '0.9']
+            
+        else:
+            suggested_cutoff = ['1%', '0.99']
+            
+
+    # Print
+    if dataset_quality == 'poor':
+        print(f'There are {number_of_cells} cells with a median sequencing depth of {median_umi_per_cell} UMI/cell. These numbers are relatively low; we therefore suggest only selecting the top {suggested_cutoff[0]} of mcFanos that have p-values lower than 0.05. To do so, set min_mcfano_cutoff = {suggested_cutoff[1]}.')
+    else:
+        print(f'There are {number_of_cells} cells with a median sequencing depth of {median_umi_per_cell} UMI/cell. Since {np.round(percent_of_significant_mcfanos, 2)}% of mcFanos are significant, we suggest selecting the top {suggested_cutoff[0]} of mcFanos that have p-values lower than 0.05. To do so, set min_mcfano_cutoff = {suggested_cutoff[1]}.')
+
 
 def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose):
     is_n_genes = isinstance(n_genes_for_PCA, bool)
