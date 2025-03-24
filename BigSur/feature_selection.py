@@ -30,7 +30,6 @@ def mcfano_feature_selection(
     n_genes_for_PCA: Union[bool, int] = False,
     min_mcfano_cutoff: Union[bool, float] = 0.9,
     p_val_cutoff: Union[bool, float] = 0.05,
-    quantile_range: Union[None, Iterable] = None,
     return_residuals: bool = False,
     n_jobs: int = -2,
     verbose: int = 1,
@@ -44,9 +43,8 @@ def mcfano_feature_selection(
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
     n_genes_for_PCA - [Int, Bool], top number of genes to use for highly_variable slot, ranked by corrected modified Fano factor and filtered by p-value cutoff. mcFano factor cutoff and p-value cutoff will first be calculated. If n_genes_for_PCA is greater than the genes passing both mcFano and p-value cutoff, the function will throw a warning and only use the genes meeting the cutoff. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
-    min_mcfano_cutoff - Union[bool, float], Only include corrected modified Fano factors greater than min_mcfano_cutoff quantile and that meet the p-value cutoff in the highly_variable column. If False, cutoff is determined by optimizing of silhouette score after filtering genes by p-value.
+    min_mcfano_cutoff - Union[bool, float], Only include corrected modified Fano factors greater than min_mcfano_cutoff quantile and that meet the p-value cutoff in the highly_variable column. If verbose = 2, we suggest a quantile cutoff based on the statistics of the dataset.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
-    quantile_range - [None, Iterable], if min_mcfano_cutoff is False then function will calculate normalized silhouette score based on clustering from different mcFano quantiles. If variable is None then default range is np.arange(0.7, 0.996, 0.001). Range can be specified.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
@@ -108,7 +106,7 @@ def mcfano_feature_selection(
     if verbose == 2:
         suggest_cutoffs(adata, layer)
 
-    genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose)
+    genes = determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, n_jobs, verbose)
     adata.var["highly_variable"] = False
     adata.var.loc[genes, "highly_variable"] = True
     if verbose > 1:
@@ -187,7 +185,7 @@ def suggest_cutoffs(adata, layer):
         print(f'There are {number_of_cells} cells with a median sequencing depth of {median_umi_per_cell} UMI/cell. Since {np.round(percent_of_significant_mcfanos, 2)}% of mcFanos are significant, we suggest selecting the top {suggested_cutoff[0]} of mcFanos that have p-values lower than 0.05. To do so, set min_mcfano_cutoff = {suggested_cutoff[1]}.')
 
 
-def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quantile_range, n_jobs, verbose):
+def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, n_jobs, verbose):
     is_n_genes = isinstance(n_genes_for_PCA, bool)
     is_p_val_cutoff = isinstance(p_val_cutoff, float)
     is_min_fano_cutoff = isinstance(min_mcfano_cutoff, float)
@@ -198,12 +196,9 @@ def determine_HVGs(adata, n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, quan
     if is_min_fano_cutoff:
         min_fano = np.quantile(adata_var_df['mc_Fano'], min_mcfano_cutoff)
     else:
-        if verbose > 0:
-            print('Running mcfano optimization')
-        df_silhouette_score, min_mcfano_cutoff = mcfano_optimization(adata, p_val_cutoff, quantile_range, n_jobs, verbose)
+        print('Optimization of mcFano using silhouette score is now disabled. Set verbose = 2 and use the suggested cutoffs. Setting the quantile cutoff to 0.9.')
+        min_mcfano_cutoff = 0.9
         min_fano = np.quantile(adata_var_df['mc_Fano'], min_mcfano_cutoff)
-    if verbose > 1:
-        print(f'Setting min_fano to {min_fano:.4f}.')
     
     genes = adata_var_df[adata_var_df['mc_Fano'] > min_fano].index
     
