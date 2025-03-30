@@ -9,7 +9,7 @@ dependencies:
   - appnope=0.1.3=pyhd8ed1ab_0
   - array-api-compat=1.4.1=pyhd8ed1ab_0
   - asttokens=2.4.1=pyhd8ed1ab_0
-  - blosc=1.21.5=heccf04b_0
+  - blosc=1.21.5
   - brotli=1.1.0=h0dc2134_1
   - brotli-bin=1.1.0=h0dc2134_1
   - bzip2=1.0.8=h10d778d_5
