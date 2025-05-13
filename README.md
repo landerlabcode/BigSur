@@ -7,14 +7,15 @@ Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is a prin
 * The feature selection derivations are detailed in [the BioRxiv paper Dollinger et al. 2023](https://www.biorxiv.org/content/10.1101/2024.10.11.617709v1).
 
 # Installation
-The only way to install BigSur currently is to clone the GitHub repo. We've included an environment.yml file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr).
-For example:
+The only way to install BigSur currently is to clone the GitHub repo. We've included a spec-list file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr). For example:
 
 In terminal:
 
     cd bigsur_dir #directory to clone to
 
     git clone https://github.com/landerlabcode/BigSur.git
+
+    conda install -f spec-list.txt -n BigSur
 
 # Usage
 Usage for feature selection is detailed in the [example notebook](https://github.com/landerlabcode/BigSur/blob/main/feature_selection_example_usage.ipynb). 
