@@ -8,7 +8,7 @@ Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is a prin
 
 
 # Installation
-The only way to install BigSur currently is to clone the GitHub repo. We've included a spec-list file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr). For example:
+The only way to install BigSur currently is to clone the GitHub repo. We've included a environment file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr). For example:
 
 In terminal:
 
@@ -16,7 +16,14 @@ In terminal:
 
     git clone https://github.com/landerlabcode/BigSur.git
 
-    conda install -f spec-list.txt -n BigSur
+    conda create -f environment.yml -n bigsur
+
+## A note about the virtual environment
+This environment contains all packages that are required to reproduce any result of the paper. If you want a lightweight conda enviroment (or alternatively, if the environment file is causing issues), you can create a sufficient conda environment as follows:
+
+In terminal:
+
+    conda create -n bigsur -c conda-forge scanpy mpmath numexpr ipykernel python-igraph leidenalg
 
 # Usage
 Usage for feature selection is detailed in the [example notebook](https://github.com/landerlabcode/BigSur/blob/main/feature_selection_example_usage.ipynb). 
