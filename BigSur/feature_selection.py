@@ -35,15 +35,15 @@ def mcfano_feature_selection(
     verbose: int = 1,
 ):
     """
-    Calculate the corrected Fano factor for all genes in the dataset. mc_Fano column will be added to .var. Highly_variable column will be added to .var based on the n_genes_for_pca, min_mcfano_cutoff and p_val_cutoff parameters.
+    Calculate the modified corrected Fano factor for all genes in the dataset. mc_Fano column will be added to .var. Highly_variable column will be added to .var based on the n_genes_for_pca, min_mcfano_cutoff and p_val_cutoff parameters.
 
     Parameters
     ----------
     adata - adata object containing information about the raw counts and gene names.
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
-    n_genes_for_PCA - [Int, Bool], top number of genes to use for highly_variable slot, ranked by corrected modified Fano factor and filtered by p-value cutoff. mcFano factor cutoff and p-value cutoff will first be calculated. If n_genes_for_PCA is greater than the genes passing both mcFano and p-value cutoff, the function will throw a warning and only use the genes meeting the cutoff. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
-    min_mcfano_cutoff - Union[bool, float], Only include corrected modified Fano factors greater than min_mcfano_cutoff quantile and that meet the p-value cutoff in the highly_variable column. If verbose = 2, we suggest a quantile cutoff based on the statistics of the dataset.
+    n_genes_for_PCA - [Int, Bool], top number of genes to use for highly_variable slot, ranked by modified corrected Fano factor and filtered by p-value cutoff. mcFano factor cutoff and p-value cutoff will first be calculated. If n_genes_for_PCA is greater than the genes passing both mcFano and p-value cutoff, the function will throw a warning and only use the genes meeting the cutoff. If False, default to combination of min_mcfano_cutoff and/or p_val_cutoff.
+    min_mcfano_cutoff - Union[bool, float], Only include modified corrected Fano factors greater than min_mcfano_cutoff quantile and that meet the p-value cutoff in the highly_variable column. If verbose = 2, we suggest a quantile cutoff based on the statistics of the dataset.
     p_val_cutoff - [Bool, Float], if a float value is provided, that p-value cutoff will be used to select genes. If False, default to combination of min_mcfano_cutoff and/or n_genes_for_PCA.
     return_residuals - Bool, if True, the function will return a matrix containing the calculated mean-centered corrected Pearson residuals matrix stored in adata.layers['residuals'].
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
@@ -59,7 +59,7 @@ def mcfano_feature_selection(
 
     tic = time.perf_counter()
     if verbose > 1:
-        print("Calculating corrected Fano factors.")
+        print("Calculating modified corrected Fano factors.")
     # Fit cv if not provided
     if cv is None:
         if verbose > 1:
@@ -75,7 +75,7 @@ def mcfano_feature_selection(
     toc = time.perf_counter()
     if verbose > 1:
         print(
-            f"Finished calculating corrected Fano factors for {corrected_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
+            f"Finished calculating modified corrected Fano factors for {corrected_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
         )
 
     # Store mc_Fano and cv
@@ -288,7 +288,7 @@ def find_cumulants(raw_count_mat, cv, means, normlist, n_jobs):
     # Calculating expectation matrix for per-cell gene means
     emat = np.outer(means, wlist)  # genesxcells
 
-    # Calculating cumulants from expected distribution of Fano factors per cell
+    # Calculating cumulants from expected distribution of modified corrected Fano factors per cell
     chi = 1 + cv**2
     n_cells = raw_count_mat.shape[0]
 
