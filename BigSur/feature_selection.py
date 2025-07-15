@@ -147,9 +147,9 @@ def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff
             n_of_ands += 1
         if is_min_fano_cutoff:
             if n_of_ands > 0:
-                print_string += f" and {min_mcfano_cutoff} for mcfano quantile cutoff"
+                print_string += f" and {min_mcfano_cutoff} for mcFano quantile cutoff"
             else:
-                print_string += f" {min_mcfano_cutoff} for mcfano quantile cutoff"
+                print_string += f" {min_mcfano_cutoff} for mcFano quantile cutoff"
         print_string += " for highly variable genes."
         print(print_string)
 
