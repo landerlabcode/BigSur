@@ -9,6 +9,7 @@ Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is a prin
 
 # Installation
 The easiest way to install bigsur is via pip:
+
     conda create -n bigsur_env python pip
     conda activate bigsur_env
     pip install bigsur
