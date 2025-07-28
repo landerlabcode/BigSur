@@ -1,0 +1,32 @@
+# pyproject.toml for bigsur
+[project]
+name = "bigsur"
+version = "0.0.6"
+authors = [
+  { name="Emmanuel Dollinger", email="edolling@uci.edu" },
+]
+description = "Basic Informatics and Gene Statistics from Unnormalized Reads, a feature selection tool for scRNAseq"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "scanpy",
+    "mpmath",
+    "numexpr",
+    "ipykernel",
+    "python-igraph",
+    "leidenalg",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/landerlabcode/BigSur/"
+Issues = "https://github.com/landerlabcode/BigSur/issues"
+
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"

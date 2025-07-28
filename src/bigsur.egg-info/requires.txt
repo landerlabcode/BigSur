@@ -1,0 +1,6 @@
+scanpy
+mpmath
+numexpr
+ipykernel
+python-igraph
+leidenalg

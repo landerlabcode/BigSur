@@ -3,12 +3,17 @@ BigSur is a package for principled, robust scRNAseq normalization. Currently we 
 
 # What is BigSur?
 Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is a principled pipeline allowing for feature selection, correlation and clustering in scRNAseq.
-* The feature selection derivations are detailed in [the BioRxiv preprint Dollinger et al. 2023](https://www.biorxiv.org/content/10.1101/2024.10.11.617709v1).
+* The feature selection derivations are detailed in [the BioRxiv preprint Dollinger et al. 2024](https://www.biorxiv.org/content/10.1101/2024.10.11.617709v1).
 * The correlation are detailed in [Silkwood et al. 2023](https://doi.org/10.1186/s12859-024-05926-z).
 
 
 # Installation
-The only way to install BigSur currently is to clone the GitHub repo. We've included a environment file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr). For example:
+The easiest way to install bigsur is via pip:
+    conda create -n bigsur_env python pip
+    conda activate bigsur_env
+    pip install bigsur
+
+Alternatively, you can clone the GitHub repo. We've included a environment file for [conda environment installation](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments); the only package we require that isn't installed with scanpy is [mpmath](https://github.com/mpmath/mpmath) and [numexpr](https://github.com/pydata/numexpr). For example:
 
 In terminal:
 
