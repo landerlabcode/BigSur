@@ -54,14 +54,13 @@ def mcfano_feature_selection(
     """
     # TO DO:
     # An assumption made throughout is each batch has the same genes. Create a function that checks this.
-    # The observations of the residuals in batch_dict are not in the same order as in the adata.
 
-    # Setup
-    determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose)
-        
     # Create variables
     batch_dict = make_vars_and_qc(adata, layer, batch_key = batch_key)
 
+    # Print cutoff parameters
+    determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose)
+        
     tic = time.perf_counter()
     # Fit cv if not provided
     if cv is None:
@@ -92,10 +91,13 @@ def mcfano_feature_selection(
     # Calculate residuals
     calculate_residuals(batch_dict)
 
-    batch_dict['All']['Residuals'] = np.concatenate([batch_dict[batch]['Residuals'] for batch in batch_dict if batch != 'All'])
+    if len(batch_dict.keys()) > 1:
+        batch_dict['All']['Residuals'] = np.concatenate([batch_dict[batch]['Residuals'] for batch in batch_dict if batch != 'All'])
+    
     # Calculate mcfanos from residuals
     if verbose > 1:
         print("Calculating modified corrected Fano factors.")
+    
     calculate_mcfano({'All':batch_dict['All']})
 
     toc = time.perf_counter()
@@ -154,9 +156,10 @@ def mcfano_feature_selection(
 
     # Returning data
     if return_residuals:
-        batch_dict['All']['Residuals'] = np.concatenate([batch_dict[batch]['Residuals'] for batch in batch_dict])
-
-        adata.layers['residuals'] = batch_dict['All']['Residuals']
+        index_map = {value: idx for idx, value in enumerate(batch_dict['All']['Barcodes'])}
+        indices = np.array([index_map[barcode] for barcode in adata.obs.index])
+        adata.layers['residuals'] = batch_dict['All']['Residuals'][indices, :]
+        
 
 # UX functions
 def determine_cutoff_parameters(n_genes_for_PCA, p_val_cutoff, min_mcfano_cutoff, verbose):
@@ -326,52 +329,64 @@ def do_loop_ks_calculation(batch_dict, gene_row):
 
     total_n_cells_in_dataset = batch_dict['All']['Batch_vector'].shape[0]
 
-    # Set up empty k's
-    k2 = np.empty((total_n_cells_in_dataset,))
-    k3 = np.empty((total_n_cells_in_dataset,))
-    k4 = np.empty((total_n_cells_in_dataset,))
-    k5 = np.empty((total_n_cells_in_dataset,))
+    if len(batch_dict.keys()) > 1:
+        vars_dict = {batch:{} for batch in batch_dict if batch != 'All'}
+    else:
+        vars_dict = {'All':{}}
 
-    # Calculate cumulants, taking into account batches
-    for batch in batch_dict:
-        # If batch is 'All' and there's more than one batch, skip it
-        if batch == 'All':
-            if len(batch_dict.keys()) > 1:
-                continue
+    for batch in vars_dict:
+        vars_dict[batch]['subsetmat'] = batch_dict[batch]['e_mat'][:,gene_row]
+        vars_dict[batch]["subsetmat2"] = ne.evaluate(
+            "subsetmat**2", vars_dict[batch])
+        vars_dict[batch]["subsetmat3"] = ne.evaluate(
+            "subsetmat**3", vars_dict[batch])
+        vars_dict[batch]["subsetmat4"] = ne.evaluate(
+            "subsetmat**4", vars_dict[batch])
+        vars_dict[batch]["subsetmat5"] = ne.evaluate(
+            "subsetmat**5", vars_dict[batch])
+        vars_dict[batch]["subsetmat6"] = ne.evaluate(
+            "subsetmat**6", vars_dict[batch])
+        vars_dict[batch]["subsetmat7"] = ne.evaluate(
+            "subsetmat**7", vars_dict[batch])
+        vars_dict[batch]['chi'] = batch_dict[batch]['Chi']
+        vars_dict[batch]["n_cells"] = batch_dict[batch]['e_mat'].shape[0]
 
-        dict_for_vars = {}
-        dict_for_vars['subsetmat'] = batch_dict[batch]['e_mat'][:,gene_row]
+    if len(vars_dict.keys()) == 1:
+        k2_list = k2_per_batch(vars_dict, 'All')
+        k3_list = k3_per_batch(vars_dict, 'All')
+        k4_list = k4_per_batch(vars_dict, 'All')
+        k5_list = k5_per_batch(vars_dict, 'All')
+    else:
+        k2_list = [k2_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
+        k3_list = [k3_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
+        k4_list = [k4_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
+        k5_list = [k5_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
 
-        dict_for_vars["subsetmat2"] = ne.evaluate(
-        "subsetmat**2", dict_for_vars)
-        dict_for_vars["subsetmat3"] = ne.evaluate(
-            "subsetmat**3", dict_for_vars)
-        dict_for_vars["subsetmat4"] = ne.evaluate(
-            "subsetmat**4", dict_for_vars)
-        dict_for_vars["subsetmat5"] = ne.evaluate(
-            "subsetmat**5", dict_for_vars)
-        dict_for_vars["subsetmat6"] = ne.evaluate(
-            "subsetmat**6", dict_for_vars)
-        dict_for_vars["subsetmat7"] = ne.evaluate(
-            "subsetmat**7", dict_for_vars)
-        
-        dict_for_vars['chi'] = batch_dict[batch]['Chi']
-        dict_for_vars["n_cells"] = batch_dict[batch]['e_mat'].shape[0]
-        
-        k2[batch_dict['All']['Batch_vector'] == batch] = ne.evaluate('(1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2)', dict_for_vars)
+    k2 = -(1/total_n_cells_in_dataset) + np.hstack(k2_list).sum()
+    k3 = np.hstack(k3_list).sum()
+    k4 = np.hstack(k4_list).sum()
+    k5 = np.hstack(k5_list).sum()
+    return k2, k3, k4, k5
 
-        k3[batch_dict['All']['Batch_vector'] == batch] = ne.evaluate('1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15))', dict_for_vars)
+def k2_per_batch(vars_dict, batch):
+    k2 = ne.evaluate('(1+subsetmat*(-4+7*chi+6*subsetmat*(1-2*chi+chi**3)+subsetmat2*(-3+6*chi-4*chi**3+chi**6)))/(subsetmat*(n_cells+subsetmat*n_cells*(-1+chi))**2)', vars_dict[batch])
 
-        k4[batch_dict['All']['Batch_vector'] == batch] = ne.evaluate('1/(subsetmat3 * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmat2 * (92 - 674 * chi + 966 * chi**3) + subsetmat3 * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmat4 * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28))', dict_for_vars)
+    return k2
 
-        k5[batch_dict['All']['Batch_vector'] == batch] = ne.evaluate('1/(subsetmat4 * (n_cells + subsetmat * n_cells * (-1 + chi))**5) * (1 + subsetmat * (-25 + 511 * chi) + 30 * subsetmat2 * (8 - 119 * chi + 311 * chi**3) + 5 * subsetmat3 * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 6821 * chi**6) + subsetmat4 * (3904 - 29880 * chi + 15690 * chi**2 + 68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 42525 * chi**10) + subsetmat5 * (-7872 + 49360 * chi - 39660 * chi**2 - 81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 20 * subsetmat6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 1390 * chi**15 + 294 * chi**21) + 10 * subsetmat7 * (-832 + 4288 * chi - 5136 * chi**2 - 2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 1420 * chi**15 - 140 * chi**16 - 476 * chi**21 + 75 * chi**28) + 5 * subsetmat**8 * (768 - 3840 * chi + 5184 * chi**2 + 1152 * chi**3 - 5656 * chi**4 + 1728 * chi**5 - 936 * chi**6 + 2432 * chi**7 - 420 * chi**8 - 960 * chi**9 + 1448 * chi**10 - 912 * chi**11 + 186 * chi**12 + 192 * chi**13 - 720 * chi**15 + 170 * chi**16 - 12 * chi**18 + 288 * chi**21 - 28 * chi**22 - 73 * chi**28 + 9 * chi**36) + subsetmat**9 * (-768 + 3840 * chi - 5760 * chi**2 + 320 * chi**3 + 5280 * chi**4 - 2536 * chi**5 + 560 * chi**6 - 2240 * chi**7 + 840 * chi**8 + 980 * chi**9 - 1072 * chi**10 + 880 * chi**11 - 300 * chi**12 - 210 * chi**13 + 400 * chi**15 - 180 * chi**16 + 20 * chi**17 + 40 * chi**18 - 170 * chi**21 + 40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 10 * chi**36 + chi**45))', dict_for_vars)
+def k3_per_batch(vars_dict, batch):
+    k3 = ne.evaluate('1/(subsetmat2 * (n_cells + subsetmat * n_cells * (-1 + chi))**3) * (1 + subsetmat * (-9 + 31 * chi) + 2 * subsetmat2 * (16 - 57 * chi + 45 * chi**3) + subsetmat3 * (-56 + 180 * chi - 21 * chi**2 - 168 * chi**3 + 65 * chi**6) + 3 * subsetmat4 * (16 - 48 * chi + 14 * chi**2 + 40 * chi**3 - 6 * chi**4 - 21 * chi**6 + 5 * chi**10) + subsetmat5 * (-16 + 48  * chi - 24 * chi**2 - 30 * chi**3 + 12 * chi**4 + 18 * chi**6 - 3 * chi**7 - 6 * chi**10 + chi**15))', vars_dict[batch])
 
+    return k3
 
-    k2_final = -(1/total_n_cells_in_dataset) + k2.sum()
-    k3_final = k3.sum()
-    k4_final = k4.sum()
-    k5_final = k5.sum()
-    return k2_final, k3_final, k4_final, k5_final
+def k4_per_batch(vars_dict, batch):
+    k4 = ne.evaluate('1/(subsetmat3 * (n_cells + subsetmat * n_cells * (-1 + chi))**4) * (1 + subsetmat * (-15 + 127 * chi) + subsetmat2 * (92 - 674 * chi + 966 * chi**3) + subsetmat3 * (-302 + 1724 * chi - 271 * chi**2 - 2804 * chi**3 + 1701 * chi**6) + 6 * subsetmat4 * (96 - 452 * chi + 174 * chi**2 + 620 * chi**3 - 102 * chi**4 - 511 * chi**6 + 175 * chi**10) + 2 * subsetmat5 * (-320 + 1344 * chi - 822 * chi**2 - 1390 * chi**3 + 672 * chi**4 + 1124 * chi**6 - 151 * chi**7 - 590 * chi**10 + 133 * chi**15) + 4 * subsetmat6 * (96 - 384 * chi + 312 * chi**2 + 278 * chi**3 - 276 * chi**4 + 18 * chi**5 - 194 * chi**6 + 84 * chi**7 - 9 * chi**9 + 126 * chi**10 - 15 * chi**11 - 43 * chi**15 + 7 * chi**21) + subsetmat7 * (-96 + 384 * chi - 384 * chi**2 - 160 * chi**3 + 314 * chi**4 - 48 * chi**5 + 112 * chi**6 - 120 * chi**7 + 12 * chi**8 + 24 * chi**9 - 80 * chi**10 + 24 * chi**11 - 3 * chi**12 + 32 * chi**15 - 4 * chi**16 - 8 * chi**21 + chi**28))', vars_dict[batch])
+
+    return k4
+
+def k5_per_batch(vars_dict, batch):
+    k5 = ne.evaluate('1/(subsetmat4 * (n_cells + subsetmat * n_cells * (-1 + chi))**5) * (1 + subsetmat * (-25 + 511 * chi) + 30 * subsetmat2 * (8 - 119 * chi + 311 * chi**3) + 5 * subsetmat3 * (-248 + 2540 * chi - 561 * chi**2 - 7208 * chi**3 + 6821 * chi**6) + subsetmat4 * (3904 - 29880 * chi + 15690 * chi**2 + 68000 * chi**3 - 12990 * chi**4 - 86865 * chi**6 + 42525 * chi**10) + subsetmat5 * (-7872 + 49360 * chi - 39660 * chi**2 - 81110 * chi**3 + 46460 * chi**4 + 98270 * chi**6 - 13365 * chi**7 - 74910 * chi**10 + 22827 * chi**15) + 20 * subsetmat6 * (512 - 2832 * chi + 2898 * chi**2 + 3168 * chi**3 - 3654 * chi**4 + 216 * chi**5 - 3109 * chi**6 + 1499 * chi**7 - 240 * chi**9 + 2953 * chi**10 - 315 * chi**11 - 1390 * chi**15 + 294 * chi**21) + 10 * subsetmat7 * (-832 + 4288 * chi - 5136 * chi**2 - 2940 * chi**3 + 6222 * chi**4 - 1008 * chi**5 + 2276 * chi**6 - 2778 * chi**7 + 172 * chi**8 + 806 * chi**9 - 2636 * chi**10 + 842 * chi**11 - 65 * chi**12 - 90 * chi**13 + 1420 * chi**15 - 140 * chi**16 - 476 * chi**21 + 75 * chi**28) + 5 * subsetmat**8 * (768 - 3840 * chi + 5184 * chi**2 + 1152 * chi**3 - 5656 * chi**4 + 1728 * chi**5 - 936 * chi**6 + 2432 * chi**7 - 420 * chi**8 - 960 * chi**9 + 1448 * chi**10 - 912 * chi**11 + 186 * chi**12 + 192 * chi**13 - 720 * chi**15 + 170 * chi**16 - 12 * chi**18 + 288 * chi**21 - 28 * chi**22 - 73 * chi**28 + 9 * chi**36) + subsetmat**9 * (-768 + 3840 * chi - 5760 * chi**2 + 320 * chi**3 + 5280 * chi**4 - 2536 * chi**5 + 560 * chi**6 - 2240 * chi**7 + 840 * chi**8 + 980 * chi**9 - 1072 * chi**10 + 880 * chi**11 - 300 * chi**12 - 210 * chi**13 + 400 * chi**15 - 180 * chi**16 + 20 * chi**17 + 40 * chi**18 - 170 * chi**21 + 40 * chi**22 + 50 * chi**28 - 5 * chi**29 - 10 * chi**36 + chi**45))', vars_dict[batch])
+
+    return k5
 
 ## Calculate CF coefficients
 def cf_coefficients(batch_dict, k2, k3, k4, k5):
