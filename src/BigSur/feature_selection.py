@@ -350,22 +350,12 @@ def do_loop_ks_calculation(batch_dict, gene_row):
             "subsetmat**7", vars_dict[batch])
         vars_dict[batch]['chi'] = batch_dict[batch]['Chi']
         vars_dict[batch]["n_cells"] = batch_dict[batch]['e_mat'].shape[0]
+    
+    k2 = -(1/total_n_cells_in_dataset) + np.hstack([k2_per_batch(vars_dict, batch) for batch in vars_dict]).sum()
+    k3 = np.hstack([k3_per_batch(vars_dict, batch) for batch in vars_dict]).sum()
+    k4 = np.hstack([k4_per_batch(vars_dict, batch) for batch in vars_dict]).sum()
+    k5 = np.hstack([k5_per_batch(vars_dict, batch) for batch in vars_dict]).sum()
 
-    if len(vars_dict.keys()) == 1:
-        k2_list = k2_per_batch(vars_dict, 'All')
-        k3_list = k3_per_batch(vars_dict, 'All')
-        k4_list = k4_per_batch(vars_dict, 'All')
-        k5_list = k5_per_batch(vars_dict, 'All')
-    else:
-        k2_list = [k2_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
-        k3_list = [k3_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
-        k4_list = [k4_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
-        k5_list = [k5_per_batch(vars_dict, batch) for batch in vars_dict if (batch != 'All')]
-
-    k2 = -(1/total_n_cells_in_dataset) + np.hstack(k2_list).sum()
-    k3 = np.hstack(k3_list).sum()
-    k4 = np.hstack(k4_list).sum()
-    k5 = np.hstack(k5_list).sum()
     return k2, k3, k4, k5
 
 def k2_per_batch(vars_dict, batch):
