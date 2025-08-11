@@ -66,7 +66,7 @@ def mcfano_feature_selection(
     if cv is None:
         if verbose > 1:
             print('Fitting cv.')
-            fit_cv(batch_dict, verbose)
+        fit_cv(batch_dict, verbose)
     elif isinstance(cv, float):
         if batch_key is not None:
             raise Exception("Batch key was provided, but cv only has one value. Please pass cv as a dict of {batch:cv} pairs.")
