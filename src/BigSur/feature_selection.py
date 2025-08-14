@@ -283,7 +283,18 @@ def calculate_p_value(
 def find_cumulants(batch_dict, n_jobs):
     """Find cumulants for each gene distribution."""
     # Calculating cumulants from expected distribution of modified corrected Fano factors per cell
-    # This is where I stopped. The equations in do_loop use cv. Each equation is per gene, so I could calculate the k's using the batch-specific cv. For example, for batch_key [0, 0, 0, 1, 1, 1], I could do k1[batch == batch_key] = equation(cv[batch]) for batch in batch_key.
+
+    # # normlist is sequencing depth / total umi; means is gene means
+    # wlist = len(normlist) * normlist
+
+    # # Calculating expectation matrix for per-cell gene means
+    # emat = np.outer(means, wlist)  # genesxcells
+
+    def emat_calculation(batch_dict, batch):
+        emat = np.outer(batch_dict[batch]['Means'], batch_dict[batch]['Raw counts'].shape[0] * batch_dict[batch]['Raw counts'].sum(axis = 1)/batch_dict[batch]['Raw counts'].sum())
+
+        return emat
+    
     for batch in batch_dict:
         # If batch is 'All' and there's more than one batch, skip it
         if (len(batch_dict) > 1) and (batch == 'All'):
@@ -291,15 +302,15 @@ def find_cumulants(batch_dict, n_jobs):
         batch_dict[batch]['Chi'] = 1 + batch_dict[batch]['CV']**2
 
     if len(batch_dict.keys()) > 1:
-        emat = np.hstack([batch_dict[batch]['e_mat'] for batch in batch_dict if batch != 'All'])
+        emat = np.hstack([emat_calculation(batch_dict, batch) for batch in batch_dict if batch != 'All'])
         chi_vec = np.hstack([np.repeat(batch_dict[batch]['Chi'], batch_dict[batch]['e_mat'].shape[0]) for batch in batch_dict if batch != 'All'])
     else:
-        emat = batch_dict['All']['e_mat']
+        emat = emat_calculation(batch_dict, 'All')
         chi_vec = np.repeat(batch_dict['All']['Chi'], batch_dict['All']['e_mat'].shape[0])
 
     total_n_cells_in_dataset = batch_dict['All']['Batch_vector'].shape[0]
 
-    dict_for_vars = {"chi": 0.65, "n_cells": total_n_cells_in_dataset, "emat": emat}#chi_vec
+    dict_for_vars = {"chi": chi_vec, "n_cells": total_n_cells_in_dataset, "emat": emat}#chi_vec
         
     outs = np.array(Parallel(n_jobs=n_jobs)(delayed(do_loop_ks_calculation)(dict_for_vars, gene_row) for gene_row in range(batch_dict['All']['mcFanos'].shape[0])))
     k2, k3, k4, k5 = np.split(outs, 4, axis=1)
@@ -340,7 +351,7 @@ def solve_CF(c1, c2, c3, c4, c5):
 def do_loop_ks_calculation(dict_for_vars, gene_row):
     '''Calculate individual cumulants for a gene. The function calculates the second to fifth cumulants (k2 to k5) for a given gene. The expectation matrices (e_mat) and coefficient of variations (CV) were calculated per batch, so the final cumulants are functions of batches. I.e., k2[batch == batch_key] = equation(cv[batch]) for batch in batch_key.'''
 
-    dict_for_vars["subsetmat"] = dict_for_vars["emat"][:, gene_row]
+    dict_for_vars["subsetmat"] = dict_for_vars["emat"][gene_row, :]
 
     dict_for_vars["subsetmat2"] = ne.evaluate(
     "subsetmat**2", dict_for_vars)
