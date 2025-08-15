@@ -34,9 +34,6 @@ def calculate_mcPCCs(adata, layer, verbose = 1, batch_key: str = None, cv = None
     batch_dict = make_vars_and_qc(adata, layer, batch_key = batch_key)
         
     tic = time.perf_counter()
-    # Calculate residuals
-    calculate_residuals(batch_dict)
-
     # Fit cv if not provided
     if cv is None:
         if verbose > 1:
@@ -63,7 +60,8 @@ def calculate_mcPCCs(adata, layer, verbose = 1, batch_key: str = None, cv = None
             # If batch is not 'All', print its CV
             else:
                 print(f"Using a coefficient of variation of {batch_dict[batch]['CV']:.4} for batch {batch}.")
-
+    # Calculate residuals
+    calculate_residuals(batch_dict)
     if len(batch_dict.keys()) > 1:
         batch_dict['All']['Residuals'] = np.concatenate([batch_dict[batch]['Residuals'] for batch in batch_dict if batch != 'All'])
     
