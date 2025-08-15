@@ -37,6 +37,33 @@ def calculate_mcPCCs(adata, layer, verbose = 1, batch_key: str = None, cv = None
     # Calculate residuals
     calculate_residuals(batch_dict)
 
+    # Fit cv if not provided
+    if cv is None:
+        if verbose > 1:
+            print('Fitting cv.')
+        fit_cv(batch_dict, verbose)
+    elif isinstance(cv, float):
+        if batch_key is not None:
+            raise Exception("Batch key was provided, but cv only has one value. Please pass cv as a dict of {batch:cv} pairs.")
+        batch_dict['All']['CV'] = cv
+    elif isinstance(cv, dict):
+        if not cv.keys() <= batch_dict.keys():
+            raise Exception("If providing CV as a dict, keys must match batch names.")
+        for batch in cv:
+            batch_dict[batch]['CV'] = cv[batch]
+            
+    if verbose > 1:
+        for batch in batch_dict:
+            # If batch is 'All' and there's more than one batch, skip it
+            if (len(batch_dict) > 1) and (batch == 'All'):
+                continue
+            # If batch is 'All' and there's only one batch, print its CV
+            elif (batch == 'All') and (len(batch_dict) == 1):
+                print(f"Using a coefficient of variation of {batch_dict[batch]['CV']:.4}.")
+            # If batch is not 'All', print its CV
+            else:
+                print(f"Using a coefficient of variation of {batch_dict[batch]['CV']:.4} for batch {batch}.")
+
     if len(batch_dict.keys()) > 1:
         batch_dict['All']['Residuals'] = np.concatenate([batch_dict[batch]['Residuals'] for batch in batch_dict if batch != 'All'])
     
