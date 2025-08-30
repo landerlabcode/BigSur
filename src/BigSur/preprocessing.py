@@ -46,7 +46,7 @@ def calculate_residuals(cv, raw_count_mat, g_counts):
         "(dense-e_mat)/(e_mat*(1+e_mat*cv**2))**(1/2)",
         {"dense": dense, "e_mat": e_mat, "cv": cv},
     )
-    return cv, normlist, residuals, n_cells
+    return cv, normlist, residuals, n_cells, e_mat
 
 def calculate_emat(raw_count_mat, g_counts):
     '''Calculate the expectation matrix (e_mat)'''
