@@ -8,6 +8,7 @@ import mpmath
 import numexpr as ne
 import warnings
 import pandas as pd
+import os
 
 ## Numpy
 from numpy.polynomial import Polynomial
@@ -26,6 +27,7 @@ from joblib import Parallel, delayed
 from scipy.interpolate import interp1d
 from scipy.special import erfcinv
 from scipy.stats import norm
+from scipy.sparse import csr_matrix, save_npz
 
 from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano
 
@@ -37,18 +39,17 @@ def calculate_mcPCCs(n_cells, mc_fanos, residuals):
 
 # Functions for inverse square moment interpolation
 def inv_sqrt_moment_interpolation(sample_moments, gene_totals, points):
-    moments_mat = np.array(sample_moments).reshape(-1, 4) # I may not need sample_moments to be reshaped
-    int_moments = []
+    int_moments = np.empty((4, gene_totals.shape[0]))
     for j in range(4):
         approx_func = interp1d(
             np.log10(points),
-            np.log10(moments_mat[:, j]),
+            np.log10(sample_moments[:, j]),
             kind='linear',
             fill_value='extrapolate'
         )
         interpolated = np.power(10, approx_func(np.log10(gene_totals)))
-        int_moments.append(interpolated)
-    e_moments = [np.outer(m, m) for m in int_moments]
+        int_moments[j, :] = interpolated
+    e_moments = np.array([np.outer(m, m) for m in int_moments]) # 4 x n_genes x n_genes
     return e_moments
 def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     a = max(2, min(g_counts))
@@ -58,33 +59,22 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     trials = 4*10**7/(n_cells*(np.log10(points)**(1/5)+0.5*np.log10(points)**3)) # should be ints
     trials = trials.astype(int)
 
-    simemat = np.outer(points, normlist)
+    sim_emat = np.outer(points, normlist) # 8 x n_cells
 
-    sample_moments = []
-
-    for i in range(points.shape[0]):
-        sample_moments.append(simulate_inverse_sqrt_mcfano_moments(simemat[i,:], c, n_cells, trials[i]))
+    sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i]) for i in range(points.shape[0])])
 
     e_moments = inv_sqrt_moment_interpolation(sample_moments, g_counts, points)
     return e_moments
-def simulate_inverse_sqrt_mcfano_moments(simemat_subset, c, n_cells, trial, starting_seed = 0):
-    samples = np.repeat(0, trial)
-    x = simemat_subset
-    mu = np.log(x / np.sqrt(1 + c**2))
+def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed = 0):
+    mu = np.log(sim_emat_subset / np.sqrt(1 + c**2)) # why ln?
     sigma = np.sqrt(np.log(1 + c**2))
 
     rng = np.random.default_rng(starting_seed)
 
-    for i in range(trial):
-        PLN_samples = rng.poisson(rng.lognormal(mean=mu, sigma=sigma))
-        sample = 1/np.sqrt(np.sum((PLN_samples-x)**2/(x+c**2*x**2))/(n_cells-1))
-        samples[i] = sample
+    PLN_samples = rng.poisson(rng.lognormal(mean=mu.reshape(1,-1), sigma=sigma), size = (trial, n_cells))
+    samples = 1/np.sqrt(np.sum((PLN_samples-sim_emat_subset)**2/(sim_emat_subset+c**2*sim_emat_subset**2), axis = 1)/(n_cells-1))
 
-    # Above for loop should be equivalent to:
-    PLN_samples = rng.poisson(rng.lognormal(mean=mu, sigma=sigma), size = (n_cells, trial))
-    samples = 1/np.sqrt(np.sum((PLN_samples-x)**2/(x+c**2*x**2))/(n_cells-1))
-
-    results = [np.mean(samples**n) for n in range(2, 6)] # Return the first 5 moments
+    results = [np.mean(samples**n) for n in range(2, 6)] # Return the second through 5th moments
 
     return(results)
 
@@ -97,111 +87,93 @@ def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
     f5 = e_moments[3,:]
 
     one_plus_cv_squared_times_emat = 1+cv**2*e_mat
-    
+
     k3_matrix = (one_plus_cv_squared_times_emat*(3+cv**2*(3+cv**2)*e_mat))/(np.sqrt(e_mat)*(one_plus_cv_squared_times_emat)**(3/2))
     k4_matrix = (1+e_mat*(3+cv**2*(7+e_mat*(6+3*cv**2*(6+e_mat)+cv**4*(6+(16+15*cv**2+6*cv**4+cv**6)*e_mat)))))/(e_mat*(one_plus_cv_squared_times_emat)**2)
-    k5_matrix_1 = (one_plus_cv_squared_times_emat*(3+cv**2*(3+cv**2)*e_mat))/(np.sqrt(e_mat)*(one_plus_cv_squared_times_emat)**(3/2))
-    k5_matrix_2 = (
-        1/(e_mat**(3/2)*(one_plus_cv_squared_times_emat)**(5/2)) *
-        (1 +
-         5*(2+3*cv**2)*e_mat +
-         5*cv**2*(8+15*cv**2+5*cv**4)*e_mat**2 +
-         10*cv**4*(6+17*cv**2+15*cv**4+6*cv**6+cv**8)*e_mat**3 +
-         cv**6*(30+135*cv**2+222*cv**4+205*cv**6+
-               120*cv**8+45*cv**10+10*cv**12+cv**14)*e_mat**4)
-    )
-
-    k3_crossprod = np.matmul(k3_matrix, k3_matrix.T)
-    k4_crossprod = np.matmul(k4_matrix, k4_matrix.T)
-    k5_crossprod_1 = np.matmul(k5_matrix_1, k5_matrix_1.T)
-    k5_crossprod_2 = np.matmul(k5_matrix_2, k5_matrix_2.T)
+    k5_matrix_2 = 1/(e_mat**(3/2)*(one_plus_cv_squared_times_emat)**(5/2)) * (1 + 5*(2+3*cv**2)*e_mat + 5*cv**2*(8+15*cv**2+5*cv**4)*e_mat**2+10*cv**4*(6+17*cv**2+15*cv**4+6*cv**6+cv**8)*e_mat**3+cv**6*(30+135*cv**2+222*cv**4+205*cv**6+120*cv**8+45*cv**10+10*cv**12+cv**14)*e_mat**4)
+    
+    k3_crossprod = np.matmul(k3_matrix.T, k3_matrix)
+    k4_crossprod = np.matmul(k4_matrix.T, k4_matrix)
+    k5_crossprod_2 = np.matmul(k5_matrix_2.T, k5_matrix_2)
 
     kappa2 = (1/(n_cells-1)**2) * f2 * n_cells
     kappa3 = (1/(n_cells-1)**3) * f3 * k3_crossprod
     kappa4 = (1/(n_cells-1)**4) * (-3*n_cells*f2**2 + f4 * k4_crossprod)
-    kappa5 = (1/(n_cells-1)**5) * (-10*f2*f3*k5_crossprod_1 + f5*k5_crossprod_2)
+    kappa5 = (1/(n_cells-1)**5) * (-10*f2*f3*k3_crossprod + f5*k5_crossprod_2)
 
-    k_list = np.hstack([kappa2, kappa3, kappa4, kappa5]) # Maybe needs to be vstack
-    return k_list
+    return kappa2, kappa3, kappa4, kappa5
 
-def calculate_mcPCCs_coefficients(k_list, mcPCCs):
-    k2 = k_list[0]
-    k3 = k_list[1]
-    k4 = k_list[2]
-    k5 = k_list[3]
-
+def calculate_mcPCCs_coefficients(k2, k3, k4, k5, mcPCCs):
+    # Convert to numexpr
     c1 = -mcPCCs - k3/(6*k2) + 17*k3**3/(324*k2**4) - k3*k4/(12*k2**3) + k5/(40*k2**2)
     c2 = np.sqrt(k2) + 5*k3**2/(36*k2**(5/2)) - k4/(8*k2**(3/2))
     c3 = k3/(6*k2) - 53*k3**3/(324*k2**4) + 5*k3*k4/(24*k2**3) - k5/(20*k2**2)
     c4 = -k3**2/(18*k2**(5/2)) + k4/(24*k2**(3/2))
     c5 = k3**3/(27*k2**4) - k3*k4/(24*k2**3) + k5/(120*k2**2)
 
-    clist = np.hstack([c1, c2, c3, c4, c5])
-    mcPCCs_length = clist[0].shape[0]
-    z = np.arange(1, mcPCCs_length+1)
+    #clist = np.hstack([c1, c2, c3, c4, c5])
+    mcPCCs_length = c1.shape[0]
+    z = np.arange(mcPCCs_length)
 
     # Generate row/col indices for lower triangle
-    row = np.concatenate([np.arange(x, mcPCCs_length+1) for x in range(2, mcPCCs_length+1)])
-    col = np.repeat(z[:-1], np.arange(mcPCCs_length, 1, -1) - 1)
+    # Currently, c1[0, 10] != c1[10, 0]
+    rows, cols = np.tril_indices(mcPCCs_length, -1)
 
-    def lower_tri_to_1d(matrix):
-        return matrix[np.tril_indices(mcPCCs_length, -1)]
+    c1_lower_flat = np.tril(c1, -1)[rows, cols]
+    c2_lower_flat = np.tril(c2, -1)[rows, cols]
+    c3_lower_flat = np.tril(c3, -1)[rows, cols]
+    c4_lower_flat = np.tril(c4, -1)[rows, cols]
+    c5_lower_flat = np.tril(c5, -1)[rows, cols]
+    return rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat
 
-    c1v = lower_tri_to_1d(clist[0])
-    c2v = lower_tri_to_1d(clist[1])
-    c3v = lower_tri_to_1d(clist[2])
-    c4v = lower_tri_to_1d(clist[3])
-    c5v = lower_tri_to_1d(clist[4])
-
-    cmatrix = np.column_stack((row, col, c1v, c2v, c3v, c4v, c5v)) 
-    return cmatrix
-
-def QuickTest6CF(cmatrix, first_pass_cutoff):
+def QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
-    
-    def testfunc_1(x, cmatrix):
-        return cmatrix[:, 2] + cmatrix[:, 3] * x + cmatrix[:, 4] * x**2 + cmatrix[:, 5] * x**3 + cmatrix[:, 6] * x**4
 
-    def testfunc_2(x, cmatrix):
-        return cmatrix[:, 2] * testfunc_1(x, cmatrix)
+    def testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
+        return c1_lower_flat + c2_lower_flat * x + c3_lower_flat * x**2 + c4_lower_flat * x**3 + c5_lower_flat * x**4 # Should it be a + bx or a - bx?
+
+    def testfunc_2(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
+        return c1_lower_flat * testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
 
     # Compute cut.vec for both pos and neg cut
-    cut_vec_1 = testfunc_1(cut, cmatrix)
-    cut_vec_2 = testfunc_1(-cut, cmatrix)
-    cut_bool = ~(cut_vec_1 * cut_vec_2  < 0) # return False if both are negative
-    cmatrix = cmatrix[cut_bool]
+    cut_vec_1 = testfunc_1(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
+    cut_vec_2 = testfunc_1(-cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
+    cut_bool = ~np.logical_and(cut_vec_1 < 0, cut_vec_2 < 0) # return False if both are negative
+    
+    cut_vec2 = testfunc_2(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
+    cut_bool2 = cut_vec2 >= 0 # return True if cut_vec2 is positive
 
-    cut_vec2 = testfunc_2(cut, cmatrix)
-    cut_bool2 = cut_vec2 >= 0
-    cmatrix = cmatrix[cut_bool2]
+    correlations_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
 
-    return cmatrix
-def SecondTestCF(cmatrix_more_testing, first_pass_cutoff):
+    return correlations_to_keep
+def SecondTestCF(c2, c3, c4, c5, first_pass_cutoff, n_jobs):
+    
     cut = np.sqrt(2) * erfcinv(2 * 10**(-first_pass_cutoff))
 
-    def derivative(x, cmatrix_subset):
-        return cmatrix_subset[3] + 2*cmatrix_subset[4]*x + 3*cmatrix_subset[5]*x**2 + 4*cmatrix_subset[6]*x**3
+    def derivative_function(x, c2, c3, c4, c5):
+        derivative = c2 + 2*c3*x + 3*c4*x**2 + 4*c5*x**3
+        return derivative
 
-    def test_conditions(cmatrix_subset):
-        if derivative(-cut, cmatrix_subset) < 0:
+    def test_conditions(c2, c3, c4, c5):
+        if derivative_function(-cut, c2, c3, c4, c5) < 0:
             return True
-        elif derivative(cut, cmatrix_subset) < 0:
+        elif derivative_function(cut, c2, c3, c4, c5) < 0:
             return False
-        elif 3*cmatrix_subset[5]**2 < 8*cmatrix_subset[4]*cmatrix_subset[6]:
+        elif 3*c4**2 < 8*c3*c5:
             return True
-        else:
-            sqrt_inner = 9*cmatrix_subset[5]**2-24*cmatrix_subset[4]*cmatrix_subset[6]
+        else: 
+            sqrt_inner = 9*c4**2-24*c3*c5
             sqrt_val = np.sqrt(sqrt_inner)
-            expr1 = (3*cmatrix_subset[5] - sqrt_val) / (12*cmatrix_subset[6])
-            expr2 = (3*cmatrix_subset[5] + sqrt_val) / (12*cmatrix_subset[6])
+            expr1 = (3*c4 - sqrt_val) / (12*c5)
+            expr2 = (3*c4 + sqrt_val) / (12*c5)
 
             term1 = (
                 -cut < expr1 < cut and
-                ((45*cmatrix_subset[5]**3-36*cmatrix_subset[4]*cmatrix_subset[5]*cmatrix_subset[6]-15*cmatrix_subset[5]**2*sqrt_val+8*cmatrix_subset[6]*(9*cmatrix_subset[3]*cmatrix_subset[6]-cmatrix_subset[4]*sqrt_val)) < 0
+                ((45*c4**3-36*c3*c4*c5-15*c4**2*sqrt_val+8*c5*(9*c2*c5-c3*sqrt_val)) < 0
             ) )
             term2 = (
                 -cut < expr2 < cut and
-                ((45*cmatrix_subset[5]**3-36*cmatrix_subset[4]*cmatrix_subset[5]*cmatrix_subset[6]+15*cmatrix_subset[5]**2*sqrt_val+8*cmatrix_subset[6]*(9*cmatrix_subset[3]*cmatrix_subset[6]+cmatrix_subset[4]*sqrt_val))<0) )
+                ((45*c4**3-36*c3*c4*c5+15*c4**2*sqrt_val+8*c5*(9*c2*c5+c4*sqrt_val))<0) )
 
             if term1:
                 return False
@@ -210,101 +182,123 @@ def SecondTestCF(cmatrix_more_testing, first_pass_cutoff):
             else:
                 return True
 
-    # Apply test_conditions row-wise
-    mask = np.apply_along_axis(test_conditions, 0, cmatrix_more_testing) # Should be row-wise; needs to be vectorized
-    cmatrix_passed = cmatrix_more_testing[mask]
-    return cmatrix_passed
+    # Apply test_conditions per correlation
+    correlations_passing = np.array(Parallel(n_jobs=n_jobs)(delayed(test_conditions)(c2[correlation_row], c3[correlation_row], c4[correlation_row], c5[correlation_row]) for correlation_row in range(c2.shape[0])))
+    toc = time.perf_counter()
+
+    indices_passing = np.where(correlations_passing)[0]
+
+    return indices_passing
 
 # Find roots of polynomials for each row
-def find_real_root(coefs):
-    p = Polynomial(coefs)
+def find_real_root(*coefs):
+    '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
+    p = Polynomial([*coefs])
     complex_roots = p.roots()
-    real_roots = complex_roots[np.isreal(complex_roots)].real
-    return np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
+    real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
+    # Why return min(abs(root))?
+    root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
+    return root
 
-def calculate_mcPCCs_CF_roots(correlation_coefficients, first_pass_cutoff, gene_totals):
-    print("Beginning root finding process for Cornish Fisher.")
-    cmatrix_pruned_1 = QuickTest6CF(correlation_coefficients, first_pass_cutoff)
-    print(f"First pruning complete. Removed {correlation_coefficients.shape[0] - cmatrix_pruned_1.shape[0]} insignificant correlations.")
+def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, gene_totals, n_jobs = -2, verbose = 1):
+    '''This function calculates the roots of the Cornish-Fisher expansion for the given correlations. It first limits the calculation of the roots to correlations that pass multiple tests. It then calculates the roots for each correlation that passed using its cumulants.'''
+    if verbose > 1:
+        print("Beginning root finding process for Cornish Fisher.")
+    # First passing test
+    # Function is correct
+    correlations_to_keep = QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
 
-    # Test gene totals for threshold
-    to_test_bool = np.array([
-        True if (gene_totals[int(row[0])] <= 84 or gene_totals[int(row[1])] <= 84) else False 
-        for row in cmatrix_pruned_1
-    ]) # Remove gene_totals that smaller than 84?
-
-    cmatrix_to_reject = np.column_stack([cmatrix_pruned_1, to_test_bool])
-
-    cmatrix_to_keep = cmatrix_pruned_1[~cmatrix_to_reject[:, -1].astype(bool)]
-    cmatrix_more_testing = cmatrix_pruned_1[cmatrix_to_reject[:, -1].astype(bool)]
+    n_correlations_removed = rows.shape[0] - correlations_to_keep.sum()
     
-    cmatrix_passed = SecondTestCF(cmatrix_more_testing, first_pass_cutoff)
-    cmatrix_to_keep = np.vstack([cmatrix_to_keep, cmatrix_passed])
-    
-    print(f"Second pruning complete. {cmatrix_to_keep.shape} correlations remain.")
+    print(f"First pruning complete. Removed {n_correlations_removed} ({np.round(n_correlations_removed/rows.shape[0],3)*100}%) insignificant correlations.")
+
+    # Second passing test.
+    # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
+    ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
+    to_test_bool_rows = np.array([True if gene_totals[row] <= 84 else False for row in rows]) #
+    to_test_bool_cols = np.array([True if gene_totals[col] <= 84 else False for col in cols]) #
+
+    to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
+
+    # If gene total > 84, we keep for root finding
+    indices_to_keep = np.where(~to_test_further & correlations_to_keep)[0]
+
+    # If gene total ≤ 84, we need to test further
+    indices_to_test_further = np.where(to_test_further & correlations_to_keep)[0]
+    c2_lower_flat_pruned_1_more_testing = c2_lower_flat[indices_to_test_further]
+    c3_lower_flat_pruned_1_more_testing = c3_lower_flat[indices_to_test_further]
+    c4_lower_flat_pruned_1_more_testing = c4_lower_flat[indices_to_test_further]
+    c5_lower_flat_pruned_1_more_testing = c5_lower_flat[indices_to_test_further]
+
+    # Third passing test
+    # Function is correct
+    indices_passing = SecondTestCF(c2_lower_flat_pruned_1_more_testing, c3_lower_flat_pruned_1_more_testing, c4_lower_flat_pruned_1_more_testing, c5_lower_flat_pruned_1_more_testing, first_pass_cutoff, n_jobs=n_jobs)
+
+    indices_to_keep = np.unique(np.append(indices_to_keep, indices_passing))
+
+    print(f"Second pruning complete. {indices_to_keep.shape[0]} correlations remain.")
+    c1_lower_flat_to_keep = c1_lower_flat[indices_to_keep]
+    c2_lower_flat_to_keep = c2_lower_flat[indices_to_keep]
+    c3_lower_flat_to_keep = c3_lower_flat[indices_to_keep]
+    c4_lower_flat_to_keep = c4_lower_flat[indices_to_keep]
+    c5_lower_flat_to_keep = c5_lower_flat[indices_to_keep]
+
+    rows_to_keep = rows[indices_to_keep]
+    cols_to_keep = cols[indices_to_keep]
+
     print("Beginning root finding.")
-    
-    roots = np.array([find_real_root(row[2:7]) for row in cmatrix_to_keep])
-    cmatrix_to_keep = np.column_stack([cmatrix_to_keep, roots])
-    found_roots = cmatrix_to_keep[~np.isnan(cmatrix_to_keep[:, 9])]
-    unfound_roots = cmatrix_to_keep[np.isnan(cmatrix_to_keep[:, 9])]
+    tic = time.perf_counter()
+    # Find roots is correct
+    correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
+    toc = time.perf_counter()
 
-    if unfound_roots.shape == 0:
-        roots_matrix = found_roots[:, [0,1,9]]
-    elif unfound_roots.shape == 1:
-        single_d_coefs = [
-            unfound_roots[0,3],
-            2*unfound_roots[0,4],
-            3*unfound_roots[0,5],
-            4*unfound_roots[0,6]
-        ]
-        single_d_root = find_real_root(single_d_coefs)
-        roots_matrix = np.vstack([found_roots[:, [0,1,9]], [unfound_roots[0,0], unfound_roots[0,1], single_d_root]])
-    else:
-        d_coefs = np.column_stack([
-            unfound_roots[:,3],
-            2*unfound_roots[:,4],
-            3*unfound_roots[:,5],
-            4*unfound_roots[:,6]
-        ])
-        d_roots = np.array([find_real_root(row) for row in d_coefs])
-        unfound_roots = np.column_stack([unfound_roots, d_roots])
-        roots_matrix = np.vstack([found_roots[:, [0,1,9]], unfound_roots[:, [0,1,10]]])
+    indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
 
-    print("Root finding complete.")
-    return roots_matrix
+    # If no real roots are found, find the roots of the derivatives and use those.
+    if indices_of_not_found_roots.shape[0] != 0:
+        derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(2*c2_lower_flat_to_keep[correlation_row], 3*c3_lower_flat_to_keep[correlation_row], 4*c4_lower_flat_to_keep[correlation_row], 5*c5_lower_flat_to_keep[correlation_row]) for correlation_row in indices_of_not_found_roots))
+        correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
+    if verbose > 1:
+        print(f"Root finding complete, took {toc - tic:0.4f} seconds.")
+    return rows_to_keep, cols_to_keep, correlation_roots
 def calculate_pvalues(correlation_roots):
     print("Estimating p-values.")
     # Calculate log p-values for column 3, two-sided
-    p = norm.logcdf(np.abs(correlation_roots[:, 2]))
-    # Combine roots_matrix and p
-    p_matrix = np.hstack((correlation_roots, p.reshape(-1, 1)))
-    p_mpfr = []
-    for x in p_matrix:
-        abs_root = abs(x[2])
-        log_p = x[3]
+    p = norm.logcdf(correlation_roots)
+    p_mpfr = np.empty(correlation_roots.shape[0])
+    for row in range(correlation_roots.shape[0]):
+        abs_root = correlation_roots[row]
+        log_p = p[row]
         if abs_root < 8.2:
             val = -np.log10(1 - np.exp(log_p))
         elif abs_root >= 38.4:
-            mp_val = mpmath.nstr(-np.log10(0.5 * mpmath.exp(- (abs_root ** 2) / 2)), 15)
+            mp_val = mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (abs_root ** 2) / 2)), 15)
             val = float(mp_val)
         else:
             val = -np.log10(-log_p / np.log(10))
-        p_mpfr.append(val)
-    p_matrix = np.hstack((p_matrix, np.array(p_mpfr).reshape(-1, 1)))
+        p_mpfr[row] = val
     print("P-value estimation complete.")
-    return p_mpfr#p_matrix
-def BH_correction(p_mpfr, num_genes):
-    sorted_pvals = np.sort(p_mpfr) # greatest to smallest?
-    BH_corrected_pvalues = (10**-sorted_pvals) * ((num_genes * (num_genes - 1)) / 2) / np.arange(1, len(sorted_pvals) + 1)
-    return BH_corrected_pvalues
+    p_values = np.array(10**-p_mpfr)
+    return p_values
 
-def calculate_correlations(adata, layer, verbose = 1, cv = None):
+def BH_correction(p_values, num_genes):
+    '''Perform Benjamini-Hochberg correction on p-values.'''
+    indices_of_smallest_to_greatest_p_values = p_values.argsort()
+    recovery_index = np.argsort(indices_of_smallest_to_greatest_p_values)
+    sorted_pvals = p_values[indices_of_smallest_to_greatest_p_values]
+    BH_corrected_pvalues = sorted_pvals * ((num_genes * (num_genes - 1)) / 2) / np.arange(1, len(sorted_pvals) + 1)
+    BH_corrected_pvalues[BH_corrected_pvalues > 1] = 1
+    BH_corrected_pvalues_reordered = BH_corrected_pvalues[recovery_index]
+    return BH_corrected_pvalues_reordered
+
+def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = None, return_residuals = False, n_jobs = -2):
     '''Calculate modified Pearson correlation coefficients (mcPCCs) for each gene pair in the dataset.'''
 
-    # Setup        
+    # Setup
+    if write_out is not None:
+        os.makedirs(write_out, exist_ok=True)
     # Create variables
-    raw_count_mat, means, variances, g_counts = make_vars_and_qc(adata, layer)
+    raw_count_mat, means, _, g_counts = make_vars_and_qc(adata, layer)
 
     tic = time.perf_counter()
     if verbose > 1:
@@ -328,22 +322,82 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None):
         )
 
     # Store mc_Fano and cv
-    adata.var["mc_Fano"] = np.array(mc_fanos).flatten()
+    if write_out is not None:
+        adata_var = adata.var.copy()
+        adata_var['mc_Fano'] = np.array(mc_fanos).flatten()
+        adata_var.to_csv(write_out + 'mc_Fano.csv')
+    else:
+        adata.var["mc_Fano"] = np.array(mc_fanos).flatten()
     adata.uns['CV_for_mc_Fano_fit'] = cv
 
     # Calculate mcPCCs
+    tic = time.perf_counter()
     mcPCCs = calculate_mcPCCs(n_cells, mc_fanos, residuals)
-    adata.varm['mcPCCs'] = mcPCCs
+    toc = time.perf_counter()
+    if verbose > 1:
+        print(
+            f"Finished calculating modified corrected Pearson correlation coefficients for {mc_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
+        )
+
+    del mc_fanos
 
     # Calculate inverse mcFano moments
-    e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist)
+    tic = time.perf_counter()
+    e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist) # These functions are correct
+    toc = time.perf_counter()
+    if verbose > 1:
+        print(
+            f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+        )
 
-    correlation_cumulants = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv)
-    correlation_coefficients = calculate_mcPCCs_coefficients(correlation_cumulants, mcPCCs)
-    correlation_roots = calculate_mcPCCs_CF_roots(correlation_coefficients, 2, g_counts)
+    tic = time.perf_counter()
+    kappa2, kappa3, kappa4, kappa5 = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv) # These functions are correct
+    toc = time.perf_counter()
+    if verbose > 1:
+        print(
+            f"Finished calculating cumulants for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+        )
 
+    # Store
+    if write_out is not None:
+        np.savez_compressed(write_out + 'residuals.npz', residuals)
+    else:
+        if return_residuals == True:
+            adata.layers["residuals"] = residuals
+
+    del residuals, e_moments, e_mat
+
+    tic = time.perf_counter()
+    rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs) # These functions are correct
+    toc = time.perf_counter()
+    if verbose > 1:
+        print(
+            f"Finished calculating coefficients for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+        )
+
+    if write_out is not None:
+        np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs)
+    else:
+        adata.varm["mcPCCs"] = mcPCCs
+    del mcPCCs
+
+    rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
+
+    # For memory purposes, delete all the cumulants that we don't need. This may not have a large impact on memory because the cumulants are simply vectors.
+    del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
+
+    tic = time.perf_counter()
     correlation_pvalues = calculate_pvalues(correlation_roots)
+    toc = time.perf_counter()
+    if verbose > 1:
+        print(f"Finished calculating p-values for {correlation_roots.shape[0]} genes in {(toc-tic):04f} seconds.")
 
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
-    return adata
+    # Reshape everything into sparse matrix
+    BH_corrected_pvalues_matrix = csr_matrix((BH_corrected_pvalues, (rows_to_keep, cols_to_keep)), shape=(g_counts.shape[0], g_counts.shape[0]))
+
+    if write_out is not None:
+        save_npz(write_out + 'BH_corrected_pvalues.npz', BH_corrected_pvalues_matrix)
+    else:
+        adata.varm["BH-corrected p-values of mcPCCs"] = BH_corrected_pvalues_matrix
