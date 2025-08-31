@@ -70,7 +70,7 @@ def fit_cv(raw_count_mat, means, g_counts, verbose, min_mean = 0.1, max_mean = 1
     slope_store = 1.0
     for cv_try in np.arange(0.05, 1.05, 0.05):
         cv_try = np.round(cv_try, 3)
-        cv_try, normlist, residuals, n_cells = calculate_residuals(
+        cv_try, normlist, residuals, n_cells, _ = calculate_residuals(
             cv_try, subset_raw_count_mat, subset_g_counts
         )
 
