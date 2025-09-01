@@ -34,7 +34,7 @@ from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calcul
 warnings.simplefilter('always', UserWarning)
 
 def calculate_mcPCCs(n_cells, mc_fanos, residuals):
-    mcPCCs = 1/((n_cells - 1) * np.sqrt(mc_fanos * mc_fanos.T)) * (residuals.T @ residuals)
+    mcPCCs = 1/((n_cells - 1) * np.sqrt(np.outer(mc_fanos, mc_fanos.T))) * (residuals.T @ residuals)
     return mcPCCs
 
 # Functions for inverse square moment interpolation
@@ -57,7 +57,7 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     h = max(g_counts)
     points = np.array([a, a * (e / a) ** (1 / 4), a * (e / a) ** (1 / 2), a * (e / a) ** (3 / 4), e, e * (h / e) ** (1 / 3), e * (h / e) ** (2 / 3), h], dtype=int) # 8 points
     trials = 4*10**7/(n_cells*(np.log10(points)**(1/5)+0.5*np.log10(points)**3)) # should be ints
-    trials = trials.astype(int)
+    trials = trials.astype(int) # the same
 
     sim_emat = np.outer(points, normlist) # 8 x n_cells
 
@@ -66,7 +66,7 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     e_moments = inv_sqrt_moment_interpolation(sample_moments, g_counts, points)
     return e_moments
 def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed = 0):
-    mu = np.log(sim_emat_subset / np.sqrt(1 + c**2)) # why ln?
+    mu = np.log(sim_emat_subset / np.sqrt(1 + c**2))
     sigma = np.sqrt(np.log(1 + c**2))
 
     rng = np.random.default_rng(starting_seed)
@@ -186,6 +186,69 @@ def SecondTestCF(c2, c3, c4, c5, first_pass_cutoff, n_jobs):
     correlations_passing = np.array(Parallel(n_jobs=n_jobs)(delayed(test_conditions)(c2[correlation_row], c3[correlation_row], c4[correlation_row], c5[correlation_row]) for correlation_row in range(c2.shape[0])))
     toc = time.perf_counter()
 
+    # index_tracker = np.array(list(range(c2.shape[0])))
+
+    # c2_to_subset = c2.copy()
+    # c3_to_subset = c3.copy()
+    # c4_to_subset = c4.copy()
+    # c5_to_subset = c5.copy()
+
+    # first_test = derivative_function(-cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0 # If first test is True, keep correlations
+    # indices_to_keep = np.where(first_test)[0]
+
+    # c2_to_subset = c2_to_subset[~first_test]
+    # c3_to_subset = c3_to_subset[~first_test]
+    # c4_to_subset = c4_to_subset[~first_test]
+    # c5_to_subset = c5_to_subset[~first_test]
+    # index_tracker = index_tracker[~first_test]
+
+    # second_test = (derivative_function(cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0) # If second test is True, do not keep correlations
+
+    # c2_to_subset = c2_to_subset[~second_test]
+    # c3_to_subset = c3_to_subset[~second_test]
+    # c4_to_subset = c4_to_subset[~second_test]
+    # c5_to_subset = c5_to_subset[~second_test]
+    # index_tracker = index_tracker[~second_test]
+
+    # third_test = 3*c4_to_subset**2 < 8*c3_to_subset*c5_to_subset # If third test is True, keep correlations
+    # indices_to_keep = np.append(indices_to_keep, index_tracker[np.where(third_test)[0]])
+
+    # c2_to_subset = c2_to_subset[~third_test]
+    # c3_to_subset = c3_to_subset[~third_test]
+    # c4_to_subset = c4_to_subset[~third_test]
+    # c5_to_subset = c5_to_subset[~third_test]
+    # index_tracker = index_tracker[~third_test]
+
+    # sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
+    # sqrt_val = np.sqrt(sqrt_inner)
+    # expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
+    # expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
+
+    # fourth_test = (
+    #     np.logical_and(np.logical_and(-cut < expr1, expr1 < cut) ,
+    #     ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset-15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset-c3_to_subset*sqrt_val)) < 0
+    # ) ) ) # If True, do not keep correlations
+
+    # c2_to_subset = c2_to_subset[~fourth_test]
+    # c3_to_subset = c3_to_subset[~fourth_test]
+    # c4_to_subset = c4_to_subset[~fourth_test]
+    # c5_to_subset = c5_to_subset[~fourth_test]
+    # index_tracker = index_tracker[~fourth_test]
+
+    # fifth_test = np.logical_and(
+    #     np.logical_and(-cut < expr2,  expr2 < cut), 
+    #     ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset+15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset+c4_to_subset*sqrt_val))<0) ) # If True, do not keep correlations
+    
+    # c2_to_subset = c2_to_subset[~fifth_test]
+    # c3_to_subset = c3_to_subset[~fifth_test]
+    # c4_to_subset = c4_to_subset[~fifth_test]
+    # c5_to_subset = c5_to_subset[~fifth_test]
+    # index_tracker = index_tracker[~fifth_test]
+
+    # # If any genes still exist in index_tracker, keep
+
+    # indices_to_keep = np.append(indices_to_keep, index_tracker) # If fourth_test is True, do not keep correlations
+
     indices_passing = np.where(correlations_passing)[0]
 
     return indices_passing
@@ -193,7 +256,7 @@ def SecondTestCF(c2, c3, c4, c5, first_pass_cutoff, n_jobs):
 # Find roots of polynomials for each row
 def find_real_root(*coefs):
     '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
-    p = Polynomial([*coefs])
+    p = Polynomial([*coefs], domain=[-100, 100])
     complex_roots = p.roots()
     real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
     # Why return min(abs(root))?
@@ -208,9 +271,8 @@ def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower
     # Function is correct
     correlations_to_keep = QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
 
-    n_correlations_removed = rows.shape[0] - correlations_to_keep.sum()
-    
-    print(f"First pruning complete. Removed {n_correlations_removed} ({np.round(n_correlations_removed/rows.shape[0],3)*100}%) insignificant correlations.")
+    if verbose > 1:
+        print(f"First pruning complete.", flush = True)
 
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
@@ -236,7 +298,10 @@ def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower
 
     indices_to_keep = np.unique(np.append(indices_to_keep, indices_passing))
 
-    print(f"Second pruning complete. {indices_to_keep.shape[0]} correlations remain.")
+    if verbose > 1:
+        n_correlations_removed = rows.shape[0] - indices_to_keep.shape[0]
+        print(f"Second pruning complete. In total, removed {n_correlations_removed} ({np.round(n_correlations_removed/rows.shape[0],3)*100}%) correlations. {indices_to_keep.shape[0]} correlations remain.", flush=True)
+
     c1_lower_flat_to_keep = c1_lower_flat[indices_to_keep]
     c2_lower_flat_to_keep = c2_lower_flat[indices_to_keep]
     c3_lower_flat_to_keep = c3_lower_flat[indices_to_keep]
@@ -246,11 +311,11 @@ def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower
     rows_to_keep = rows[indices_to_keep]
     cols_to_keep = cols[indices_to_keep]
 
-    print("Beginning root finding.")
+    if verbose > 1:
+        print("Beginning root finding.", flush=True)
     tic = time.perf_counter()
     # Find roots is correct
     correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
-    toc = time.perf_counter()
 
     indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
 
@@ -258,6 +323,7 @@ def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower
     if indices_of_not_found_roots.shape[0] != 0:
         derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(2*c2_lower_flat_to_keep[correlation_row], 3*c3_lower_flat_to_keep[correlation_row], 4*c4_lower_flat_to_keep[correlation_row], 5*c5_lower_flat_to_keep[correlation_row]) for correlation_row in indices_of_not_found_roots))
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
+    toc = time.perf_counter()
     if verbose > 1:
         print(f"Root finding complete, took {toc - tic:0.4f} seconds.")
     return rows_to_keep, cols_to_keep, correlation_roots
@@ -277,7 +343,6 @@ def calculate_pvalues(correlation_roots):
         else:
             val = -np.log10(-log_p / np.log(10))
         p_mpfr[row] = val
-    print("P-value estimation complete.")
     p_values = np.array(10**-p_mpfr)
     return p_values
 
@@ -361,6 +426,8 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = Non
     # Store
     if write_out is not None:
         np.savez_compressed(write_out + 'residuals.npz', residuals)
+        np.savez_compressed(write_out + 'cumulants.npz', kappa2=kappa2, kappa3=kappa3, kappa4=kappa4, kappa5=kappa5)
+        np.savez_compressed(write_out + 'e_mat.npz', e_mat)
     else:
         if return_residuals == True:
             adata.layers["residuals"] = residuals
@@ -377,6 +444,7 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = Non
 
     if write_out is not None:
         np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs)
+        np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
     else:
         adata.varm["mcPCCs"] = mcPCCs
     del mcPCCs
@@ -391,13 +459,18 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = Non
     toc = time.perf_counter()
     if verbose > 1:
         print(f"Finished calculating p-values for {correlation_roots.shape[0]} genes in {(toc-tic):04f} seconds.")
-
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
     # Reshape everything into sparse matrix
     BH_corrected_pvalues_matrix = csr_matrix((BH_corrected_pvalues, (rows_to_keep, cols_to_keep)), shape=(g_counts.shape[0], g_counts.shape[0]))
 
+    # Make new empty matrix
+    matrix_reconstructed = np.ones((g_counts.shape[0], g_counts.shape[0]))
+    matrix_reconstructed[rows_to_keep, cols_to_keep] = BH_corrected_pvalues
+    matrix_reconstructed_lower_triangular = np.tril(matrix_reconstructed, -1)
+    matrix_reconstructed_lower_triangular_sparse = csr_matrix(matrix_reconstructed_lower_triangular)
+
     if write_out is not None:
-        save_npz(write_out + 'BH_corrected_pvalues.npz', BH_corrected_pvalues_matrix)
+        save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular_sparse)
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = BH_corrected_pvalues_matrix
