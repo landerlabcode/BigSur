@@ -91,6 +91,8 @@ def calculate_correlations(
         if previously_run & (not save_mc_fanos):
             pass
         else:
+            if verbose > 1:
+                print('Writing mcFanos to disk.', flush = True)
             adata_var = adata.var.copy()
             adata_var['mc_Fano'] = np.array(mc_fanos).flatten()
             adata_var.to_csv(write_out + 'mc_Fano.csv')
@@ -120,13 +122,19 @@ def calculate_correlations(
     if write_out is not None:
         if previously_run:
             if save_residuals:
+                if verbose > 1:
+                    print('Writing residuals and expectation matrix to disk.', flush = True)
                 np.savez_compressed(write_out + 'residuals.npz', residuals=residuals)
                 np.savez_compressed(write_out + 'e_mat.npz', e_mat=e_mat)
             if save_kappas:
+                if verbose > 1:
+                    print('Writing cumulants to disk.', flush = True)
                 np.savez_compressed(write_out + 'cumulants.npz', kappa2=kappa2, kappa3=kappa3, kappa4=kappa4, kappa5=kappa5)
             else:
                 pass
         else:
+            if verbose > 1:
+                    print('Writing cumulants, residuals and expectation matrix to disk.', flush = True)
             np.savez_compressed(write_out + 'residuals.npz', residuals=residuals)
             np.savez_compressed(write_out + 'cumulants.npz', kappa2=kappa2, kappa3=kappa3, kappa4=kappa4, kappa5=kappa5)
             np.savez_compressed(write_out + 'e_mat.npz', e_mat=e_mat)
@@ -140,12 +148,18 @@ def calculate_correlations(
     if write_out is not None:
         if previously_run:
             if save_mcPCCs:
+                if verbose > 1:
+                    print('Writing mcPCCs to disk.', flush = True)
                 np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
             if save_coefficients:
+                if verbose > 1:
+                    print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
             else:
                 pass
         else:
+            if verbose > 1:
+                    print('Writing mcPCCs and coefficients to disk.', flush = True)
             np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
             np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
     else:
@@ -174,6 +188,8 @@ def calculate_correlations(
     matrix_reconstructed_lower_triangular_sparse = csr_matrix(matrix_reconstructed_lower_triangular)
 
     if write_out is not None:
+        if verbose > 1:
+            print('Writing BH corrected p-values to disk.', flush = True)
         save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular_sparse)
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = BH_corrected_pvalues_matrix
