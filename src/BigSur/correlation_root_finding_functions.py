@@ -84,75 +84,80 @@ def SecondTestCF(c2, c3, c4, c5, first_pass_cutoff, n_jobs):
                 return True
 
     # Apply test_conditions per correlation
-    correlations_passing = np.array(Parallel(n_jobs=n_jobs)(delayed(test_conditions)(c2[correlation_row], c3[correlation_row], c4[correlation_row], c5[correlation_row]) for correlation_row in range(c2.shape[0])))
-    toc = time.perf_counter()
+    # correlations_passing = np.array(Parallel(n_jobs=n_jobs)(delayed(test_conditions)(c2[correlation_row], c3[correlation_row], c4[correlation_row], c5[correlation_row]) for correlation_row in range(c2.shape[0])))
+    # toc = time.perf_counter()
 
-    # index_tracker = np.array(list(range(c2.shape[0])))
+    # indices_passing = np.where(correlations_passing)[0]
 
-    # c2_to_subset = c2.copy()
-    # c3_to_subset = c3.copy()
-    # c4_to_subset = c4.copy()
-    # c5_to_subset = c5.copy()
+    index_tracker = np.array(list(range(c2.shape[0])))
 
-    # first_test = derivative_function(-cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0 # If first test is True, keep correlations
-    # indices_to_keep = np.where(first_test)[0]
+    c2_to_subset = c2.copy()
+    c3_to_subset = c3.copy()
+    c4_to_subset = c4.copy()
+    c5_to_subset = c5.copy()
 
-    # c2_to_subset = c2_to_subset[~first_test]
-    # c3_to_subset = c3_to_subset[~first_test]
-    # c4_to_subset = c4_to_subset[~first_test]
-    # c5_to_subset = c5_to_subset[~first_test]
-    # index_tracker = index_tracker[~first_test]
+    first_test = derivative_function(-cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0 # If first test is True, keep correlations
+    indices_to_keep = np.where(first_test)[0]
 
-    # second_test = (derivative_function(cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0) # If second test is True, do not keep correlations
+    c2_to_subset = c2_to_subset[~first_test]
+    c3_to_subset = c3_to_subset[~first_test]
+    c4_to_subset = c4_to_subset[~first_test]
+    c5_to_subset = c5_to_subset[~first_test]
+    index_tracker = index_tracker[~first_test]
 
-    # c2_to_subset = c2_to_subset[~second_test]
-    # c3_to_subset = c3_to_subset[~second_test]
-    # c4_to_subset = c4_to_subset[~second_test]
-    # c5_to_subset = c5_to_subset[~second_test]
-    # index_tracker = index_tracker[~second_test]
+    second_test = (derivative_function(cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0) # If second test is True, do not keep correlations
 
-    # third_test = 3*c4_to_subset**2 < 8*c3_to_subset*c5_to_subset # If third test is True, keep correlations
-    # indices_to_keep = np.append(indices_to_keep, index_tracker[np.where(third_test)[0]])
+    c2_to_subset = c2_to_subset[~second_test]
+    c3_to_subset = c3_to_subset[~second_test]
+    c4_to_subset = c4_to_subset[~second_test]
+    c5_to_subset = c5_to_subset[~second_test]
+    index_tracker = index_tracker[~second_test]
 
-    # c2_to_subset = c2_to_subset[~third_test]
-    # c3_to_subset = c3_to_subset[~third_test]
-    # c4_to_subset = c4_to_subset[~third_test]
-    # c5_to_subset = c5_to_subset[~third_test]
-    # index_tracker = index_tracker[~third_test]
+    third_test = 3*c4_to_subset**2 < 8*c3_to_subset*c5_to_subset # If third test is True, keep correlations
+    indices_to_keep = np.append(indices_to_keep, index_tracker[np.where(third_test)[0]])
 
-    # sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
-    # sqrt_val = np.sqrt(sqrt_inner)
-    # expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
-    # expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
+    c2_to_subset = c2_to_subset[~third_test]
+    c3_to_subset = c3_to_subset[~third_test]
+    c4_to_subset = c4_to_subset[~third_test]
+    c5_to_subset = c5_to_subset[~third_test]
+    index_tracker = index_tracker[~third_test]
 
-    # fourth_test = (
-    #     np.logical_and(np.logical_and(-cut < expr1, expr1 < cut) ,
-    #     ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset-15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset-c3_to_subset*sqrt_val)) < 0
-    # ) ) ) # If True, do not keep correlations
+    sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
+    sqrt_val = np.sqrt(sqrt_inner)
+    expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
+    expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
 
-    # c2_to_subset = c2_to_subset[~fourth_test]
-    # c3_to_subset = c3_to_subset[~fourth_test]
-    # c4_to_subset = c4_to_subset[~fourth_test]
-    # c5_to_subset = c5_to_subset[~fourth_test]
-    # index_tracker = index_tracker[~fourth_test]
+    fourth_test = (
+        np.logical_and(np.logical_and(-cut < expr1, expr1 < cut) ,
+        ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset-15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset-c3_to_subset*sqrt_val)) < 0
+    ) ) ) # If True, do not keep correlations
 
-    # fifth_test = np.logical_and(
-    #     np.logical_and(-cut < expr2,  expr2 < cut), 
-    #     ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset+15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset+c4_to_subset*sqrt_val))<0) ) # If True, do not keep correlations
+    c2_to_subset = c2_to_subset[~fourth_test]
+    c3_to_subset = c3_to_subset[~fourth_test]
+    c4_to_subset = c4_to_subset[~fourth_test]
+    c5_to_subset = c5_to_subset[~fourth_test]
+    index_tracker = index_tracker[~fourth_test]
+
+    sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
+    sqrt_val = np.sqrt(sqrt_inner)
+    expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
+    expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
+
+    fifth_test = np.logical_and(
+        np.logical_and(-cut < expr2,  expr2 < cut), 
+        ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset+15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset+c4_to_subset*sqrt_val))<0) ) # If True, do not keep correlations
     
-    # c2_to_subset = c2_to_subset[~fifth_test]
-    # c3_to_subset = c3_to_subset[~fifth_test]
-    # c4_to_subset = c4_to_subset[~fifth_test]
-    # c5_to_subset = c5_to_subset[~fifth_test]
-    # index_tracker = index_tracker[~fifth_test]
+    c2_to_subset = c2_to_subset[~fifth_test]
+    c3_to_subset = c3_to_subset[~fifth_test]
+    c4_to_subset = c4_to_subset[~fifth_test]
+    c5_to_subset = c5_to_subset[~fifth_test]
+    index_tracker = index_tracker[~fifth_test]
 
-    # # If any genes still exist in index_tracker, keep
+    # If any genes still exist in index_tracker, keep
 
-    # indices_to_keep = np.append(indices_to_keep, index_tracker) # If fourth_test is True, do not keep correlations
+    indices_to_keep = np.append(indices_to_keep, index_tracker) # If fourth_test is True, do not keep correlations
 
-    indices_passing = np.where(correlations_passing)[0]
-
-    return indices_passing
+    return indices_to_keep
 
 # Find roots of polynomials for each row
 def find_real_root(*coefs):

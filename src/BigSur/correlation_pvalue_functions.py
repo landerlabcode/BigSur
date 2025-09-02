@@ -31,18 +31,24 @@ def calculate_pvalues(correlation_roots):
     print("Estimating p-values.")
     # Calculate log p-values for column 3, two-sided
     p = norm.logcdf(correlation_roots)
-    p_mpfr = np.empty(correlation_roots.shape[0])
-    for row in range(correlation_roots.shape[0]):
-        abs_root = correlation_roots[row]
-        log_p = p[row]
-        if abs_root < 8.2:
-            val = -np.log10(1 - np.exp(log_p))
-        elif abs_root >= 38.4:
-            mp_val = mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (abs_root ** 2) / 2)), 15)
-            val = float(mp_val)
-        else:
-            val = -np.log10(-log_p / np.log(10))
-        p_mpfr[row] = val
+    p_mpfr = -np.log10(-p / np.log(10))
+    p_mpfr[correlation_roots < 8.2] = -np.log10(1 - np.exp(p[correlation_roots < 8.2]))
+    p_mpfr[correlation_roots >= 38.4] = [float(mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (mpmath.power(mpmath.mpf(correlation_roots[loc]), 2)) / 2)), 15)) for loc in np.where(correlation_roots >= 38.4)[0]]
+
+    # tic = time.perf_counter()
+    # for row in range(correlation_roots.shape[0]):
+    #     abs_root = correlation_roots[row]
+    #     log_p = p[row]
+    #     if abs_root < 8.2:
+    #         val = -np.log10(1 - np.exp(log_p))
+    #     elif abs_root >= 38.4:
+    #         mp_val = mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (abs_root ** 2) / 2)), 15)
+    #         val = float(mp_val)
+    #     else:
+    #         val = -np.log10(-log_p / np.log(10))
+    #     p_mpfr[row] = val
+    # toc = time.perf_counter()
+    # print(f"Finished estimating p-values in {(toc-tic):04f} seconds.")
     p_values = np.array(10**-p_mpfr)
     return p_values
 

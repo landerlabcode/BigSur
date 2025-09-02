@@ -56,7 +56,6 @@ def calculate_correlations(
     previously_run - Bool, if True, the function will attempt to load previously calculated results from the write_out directory.
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
-    
     '''
 
     # Setup
@@ -175,11 +174,11 @@ def calculate_correlations(
     correlation_pvalues = calculate_pvalues(correlation_roots)
     toc = time.perf_counter()
     if verbose > 1:
-        print(f"Finished calculating p-values for {correlation_roots.shape[0]} genes in {(toc-tic):04f} seconds.")
+        print(f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(toc-tic):04f} seconds.")
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
     # Reshape everything into sparse matrix
-    BH_corrected_pvalues_matrix = csr_matrix((BH_corrected_pvalues, (rows_to_keep, cols_to_keep)), shape=(g_counts.shape[0], g_counts.shape[0]))
+    #BH_corrected_pvalues_matrix = csr_matrix((BH_corrected_pvalues, (rows_to_keep, cols_to_keep)), shape=(g_counts.shape[0], g_counts.shape[0]))
 
     # Make new empty matrix
     matrix_reconstructed = np.ones((g_counts.shape[0], g_counts.shape[0]))
@@ -192,5 +191,5 @@ def calculate_correlations(
             print('Writing BH corrected p-values to disk.', flush = True)
         save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular_sparse)
     else:
-        adata.varm["BH-corrected p-values of mcPCCs"] = BH_corrected_pvalues_matrix
+        adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular_sparse
 
