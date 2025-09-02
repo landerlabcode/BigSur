@@ -87,7 +87,6 @@ def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
     f5 = e_moments[3,:]
 
     one_plus_cv_squared_times_emat = 1+cv**2*e_mat
-
     k3_matrix = (one_plus_cv_squared_times_emat*(3+cv**2*(3+cv**2)*e_mat))/(np.sqrt(e_mat)*(one_plus_cv_squared_times_emat)**(3/2))
     k4_matrix = (1+e_mat*(3+cv**2*(7+e_mat*(6+3*cv**2*(6+e_mat)+cv**4*(6+(16+15*cv**2+6*cv**4+cv**6)*e_mat)))))/(e_mat*(one_plus_cv_squared_times_emat)**2)
     k5_matrix_2 = 1/(e_mat**(3/2)*(one_plus_cv_squared_times_emat)**(5/2)) * (1 + 5*(2+3*cv**2)*e_mat + 5*cv**2*(8+15*cv**2+5*cv**4)*e_mat**2+10*cv**4*(6+17*cv**2+15*cv**4+6*cv**6+cv**8)*e_mat**3+cv**6*(30+135*cv**2+222*cv**4+205*cv**6+120*cv**8+45*cv**10+10*cv**12+cv**14)*e_mat**4)
@@ -126,11 +125,11 @@ def calculate_mcPCCs_coefficients(k2, k3, k4, k5, mcPCCs):
     c5_lower_flat = np.tril(c5, -1)[rows, cols]
     return rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat
 
-def QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
+def QuickTest6CF(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
 
     def testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
-        return c1_lower_flat + c2_lower_flat * x + c3_lower_flat * x**2 + c4_lower_flat * x**3 + c5_lower_flat * x**4 # Should it be a + bx or a - bx?
+        return c1_lower_flat + c2_lower_flat * x + c3_lower_flat * x**2 + c4_lower_flat * x**3 + c5_lower_flat * x**4
 
     def testfunc_2(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
         return c1_lower_flat * testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
@@ -138,10 +137,10 @@ def QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_
     # Compute cut.vec for both pos and neg cut
     cut_vec_1 = testfunc_1(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_vec_2 = testfunc_1(-cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
-    cut_bool = ~np.logical_and(cut_vec_1 < 0, cut_vec_2 < 0) # return False if both are negative
+    cut_bool = ~(cut_vec_1 * cut_vec_2 < 0)#~np.logical_and(cut_vec_1 < 0, cut_vec_2 < 0) # return False if both are negative
     
     cut_vec2 = testfunc_2(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
-    cut_bool2 = cut_vec2 >= 0 # return True if cut_vec2 is positive
+    cut_bool2 = ~(cut_vec2 < 0) # return False if cut_vec2 is negative
 
     correlations_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
 
@@ -263,13 +262,12 @@ def find_real_root(*coefs):
     root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
     return root
 
-def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, gene_totals, n_jobs = -2, verbose = 1):
+def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, gene_totals, n_jobs = -2, verbose = 1):
     '''This function calculates the roots of the Cornish-Fisher expansion for the given correlations. It first limits the calculation of the roots to correlations that pass multiple tests. It then calculates the roots for each correlation that passed using its cumulants.'''
     if verbose > 1:
         print("Beginning root finding process for Cornish Fisher.")
     # First passing test
-    # Function is correct
-    correlations_to_keep = QuickTest6CF(c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
+    correlations_to_keep = QuickTest6CF(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
 
     if verbose > 1:
         print(f"First pruning complete.", flush = True)
@@ -277,9 +275,12 @@ def calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
-    to_test_bool_rows = np.array([True if gene_totals[row] <= 84 else False for row in rows]) #
-    to_test_bool_cols = np.array([True if gene_totals[col] <= 84 else False for col in cols]) #
+    test_array = np.array([gene_totals[row] for row in rows])
+    to_test_bool_rows = test_array <= 84
 
+    test_array = np.array([gene_totals[col] for col in cols])
+    to_test_bool_cols = test_array <= 84
+    
     to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
 
     # If gene total > 84, we keep for root finding
@@ -356,7 +357,7 @@ def BH_correction(p_values, num_genes):
     BH_corrected_pvalues_reordered = BH_corrected_pvalues[recovery_index]
     return BH_corrected_pvalues_reordered
 
-def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = None, return_residuals = False, n_jobs = -2):
+def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = None, previously_run = False, return_residuals = False, n_jobs = -2):
     '''Calculate modified Pearson correlation coefficients (mcPCCs) for each gene pair in the dataset.'''
 
     # Setup
@@ -409,6 +410,7 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = Non
     # Calculate inverse mcFano moments
     tic = time.perf_counter()
     e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist) # These functions are correct
+
     toc = time.perf_counter()
     if verbose > 1:
         print(
@@ -449,7 +451,7 @@ def calculate_correlations(adata, layer, verbose = 1, cv = None, write_out = Non
         adata.varm["mcPCCs"] = mcPCCs
     del mcPCCs
 
-    rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
+    rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
 
     # For memory purposes, delete all the cumulants that we don't need. This may not have a large impact on memory because the cumulants are simply vectors.
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
