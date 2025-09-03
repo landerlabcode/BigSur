@@ -43,9 +43,10 @@ def calculate_correlations(
         cv: Union[float, None] = None, 
         write_out: Union[str, None] = None, 
         previously_run: bool = False, 
+        store_intermediate_results: bool = False,
         n_jobs: int = -2,
         verbose: int = 1):
-    '''Calculate modified Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset.
+    '''Calculate modified Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset. Both the mcPCC and BH corrected p-value matrices are full matrices, e.g. matrix[row, col] = matrix[col, row].
 
     Parameters
     ----------
@@ -54,6 +55,7 @@ def calculate_correlations(
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
     write_out - String, path to directory where intermediate results will be written. If calculating correlations on a large dataset, this is highly recommended to conserve memory.
     previously_run - Bool, if True, the function will attempt to load previously calculated results from the write_out directory.
+    store_intermediate_results - Bool, if True, intermediate results will be saved to disk.
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
     '''
@@ -118,7 +120,7 @@ def calculate_correlations(
     save_kappas, kappa2, kappa3, kappa4, kappa5 = load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments)
 
     # Store
-    if write_out is not None:
+    if (write_out is not None) and (store_intermediate_results):
         if previously_run:
             if save_residuals:
                 if verbose > 1:
@@ -150,7 +152,7 @@ def calculate_correlations(
                 if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
                 np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
-            if save_coefficients:
+            if save_coefficients and (store_intermediate_results):
                 if verbose > 1:
                     print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
@@ -158,9 +160,11 @@ def calculate_correlations(
                 pass
         else:
             if verbose > 1:
-                    print('Writing mcPCCs and coefficients to disk.', flush = True)
+                    print('Writing mcPCCs to disk.', flush = True)
             np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
-            np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
+            if store_intermediate_results:
+                print('Writing coefficients to disk.', flush = True)
+                np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
     else:
         adata.varm["mcPCCs"] = mcPCCs
     del mcPCCs
@@ -177,19 +181,16 @@ def calculate_correlations(
         print(f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(toc-tic):04f} seconds.")
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
-    # Reshape everything into sparse matrix
-    #BH_corrected_pvalues_matrix = csr_matrix((BH_corrected_pvalues, (rows_to_keep, cols_to_keep)), shape=(g_counts.shape[0], g_counts.shape[0]))
-
     # Make new empty matrix
     matrix_reconstructed = np.ones((g_counts.shape[0], g_counts.shape[0]))
     matrix_reconstructed[rows_to_keep, cols_to_keep] = BH_corrected_pvalues
-    matrix_reconstructed_lower_triangular = np.tril(matrix_reconstructed, -1)
-    matrix_reconstructed_lower_triangular_sparse = csr_matrix(matrix_reconstructed_lower_triangular)
+    matrix_reconstructed[cols_to_keep, rows_to_keep] = BH_corrected_pvalues
+    matrix_reconstructed = csr_matrix(matrix_reconstructed)
 
     if write_out is not None:
         if verbose > 1:
             print('Writing BH corrected p-values to disk.', flush = True)
-        save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular_sparse)
+        save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed)
     else:
-        adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular_sparse
+        adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed
 
