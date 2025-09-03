@@ -46,7 +46,7 @@ def calculate_correlations(
         store_intermediate_results: bool = False,
         n_jobs: int = -2,
         verbose: int = 1):
-    '''Calculate modified Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset. Both the mcPCC and BH corrected p-value matrices are full matrices, e.g. matrix[row, col] = matrix[col, row].
+    '''Calculate modified Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset. Both the mcPCC and BH corrected p-value matrices are full matrices, i.e. matrix[row, col] = matrix[col, row]. Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant are stored as 1's. 
 
     Parameters
     ----------
