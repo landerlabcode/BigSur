@@ -27,7 +27,7 @@ from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
 
 
-def QuickTest6CF(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
+def QuickTest6CF(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
 
     def testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):

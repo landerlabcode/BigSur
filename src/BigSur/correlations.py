@@ -192,7 +192,7 @@ def calculate_correlations(
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
 
     tic = time.perf_counter()
-    correlation_pvalues = calculate_pvalues(correlation_roots)
+    correlation_pvalues = calculate_pvalues(correlation_roots, n_jobs=n_jobs)
     toc = time.perf_counter()
     if verbose > 1:
         print(f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(toc-tic):04f} seconds.")
