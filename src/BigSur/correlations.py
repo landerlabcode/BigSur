@@ -30,7 +30,8 @@ from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
 
 from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano, calculate_emat
-from .helper_functions import load_or_calculate_coefficients, load_or_calculate_mc_fanos, load_or_calculate_residuals, load_or_calculate_mcpccs, load_or_calculate_cumulants, calculate_mcPCCs
+from .correlation_coefficient_functions import load_or_calculate_residuals, load_or_calculate_mc_fanos, load_or_calculate_mcpccs, load_or_calculate_coefficients
+from .correlation_cumulant_functions import load_or_calculate_cumulants
 from .inverse_sqrt_moment_interpolation_functions import inverse_sqrt_mcfano_correction
 from .correlation_root_finding_functions import calculate_mcPCCs_CF_roots
 from .correlation_pvalue_functions import calculate_pvalues, BH_correction
@@ -46,7 +47,7 @@ def calculate_correlations(
         store_intermediate_results: bool = False,
         n_jobs: int = -2,
         verbose: int = 1):
-    '''Calculate modified Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset. Both the mcPCC and BH corrected p-value matrices are full matrices, i.e. matrix[row, col] = matrix[col, row]. Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant are stored as 1's. 
+    '''Calculate modified corrected Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset.
 
     Parameters
     ----------
@@ -58,6 +59,19 @@ def calculate_correlations(
     store_intermediate_results - Bool, if True, intermediate results will be saved to disk.
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
     verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
+
+    Returns
+    -------
+    If write_out is true, the mcPCCs and BH-corrected p-values will be saved to the specified directory. Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. To get a matrix of mcPCCs that have BH-corrected p-values lower than a specified value, threshold the BH-corrected p-value matrix values and multiply the resulting bool matrix with the mcPCCs. For example:
+    
+    BH_cutoff = BH_corrected_pvalues[BH_corrected_pvalues<0.05]
+    mcPCCs_significant = mcPCCs * BH_cutoff
+
+    If necessary, calculate the mcPCCs symmetrical matrix by adding the lower triangular matrix to its transpose:
+
+    mcPCCs_significant_symmetrical = mcPCCs_significant + mcPCCs_significant.T
+
+    Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant (and therefore not calculated) are stored as 1's. 
     '''
 
     # Setup
@@ -146,12 +160,15 @@ def calculate_correlations(
 
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
 
+    # Convert mcPCCs to lower triangular
+    mcPCCs_lower = np.tril(mcPCCs, -1)
+
     if write_out is not None:
         if previously_run:
             if save_mcPCCs:
                 if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
-                np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
+                np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs_lower)
             if save_coefficients and (store_intermediate_results):
                 if verbose > 1:
                     print('Writing coefficients to disk.', flush = True)
@@ -161,7 +178,7 @@ def calculate_correlations(
         else:
             if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
-            np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs)
+            np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs_lower)
             if store_intermediate_results:
                 print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
@@ -185,12 +202,15 @@ def calculate_correlations(
     matrix_reconstructed = np.ones((g_counts.shape[0], g_counts.shape[0]))
     matrix_reconstructed[rows_to_keep, cols_to_keep] = BH_corrected_pvalues
     matrix_reconstructed[cols_to_keep, rows_to_keep] = BH_corrected_pvalues
-    matrix_reconstructed = csr_matrix(matrix_reconstructed)
+
+    # convert to lower triangular
+    matrix_reconstructed_lower_triangular = np.tril(matrix_reconstructed, -1)
+    matrix_reconstructed_lower_triangular = csr_matrix(matrix_reconstructed_lower_triangular)
 
     if write_out is not None:
         if verbose > 1:
             print('Writing BH corrected p-values to disk.', flush = True)
-        save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed)
+        save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular)
     else:
-        adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed
+        adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular
 

@@ -49,3 +49,33 @@ def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
     kappa5 = (1/(n_cells-1)**5) * (-10*f2*f3*k3_crossprod + f5*k5_crossprod_2)
 
     return kappa2, kappa3, kappa4, kappa5
+
+def load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments):
+    save_kappas = False
+    if previously_run:
+        if os.path.isfile(write_out + 'cumulants.npz'):
+            loader = np.load(write_out + 'cumulants.npz', allow_pickle=True)
+            kappa2 = loader['kappa2']
+            kappa3 = loader['kappa3']
+            kappa4 = loader['kappa4']
+            kappa5 = loader['kappa5']
+        else:
+            print("Cumulants file not found, recalculating.")
+            save_kappas = True
+            tic = time.perf_counter()
+            kappa2, kappa3, kappa4, kappa5 = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv)
+            toc = time.perf_counter()
+            if verbose > 1:
+                print(
+                    f"Finished calculating cumulants for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+                )
+    else:
+        tic = time.perf_counter()
+        kappa2, kappa3, kappa4, kappa5 = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv)
+        toc = time.perf_counter()
+        if verbose > 1:
+            print(
+                f"Finished calculating cumulants for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+            )
+            
+    return save_kappas,kappa2,kappa3,kappa4,kappa5
