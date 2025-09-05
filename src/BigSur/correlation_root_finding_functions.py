@@ -182,11 +182,11 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
-    test_array = np.array([gene_totals[row] for row in rows])
-    to_test_bool_rows = test_array <= 84
+    test_array_rows = gene_totals[rows]
+    test_array_cols = gene_totals[cols]
 
-    test_array = np.array([gene_totals[col] for col in cols])
-    to_test_bool_cols = test_array <= 84
+    to_test_bool_rows = test_array_rows <= 84
+    to_test_bool_cols = test_array_cols <= 84
     
     to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
 

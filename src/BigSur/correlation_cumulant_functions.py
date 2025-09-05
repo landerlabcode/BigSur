@@ -8,15 +8,7 @@ import pandas as pd
 import os
 import numexpr as ne
 
-## Numpy
-from numpy.polynomial import Polynomial
 
-## Anndata
-from anndata import AnnData
-from mpmath import ncdf, exp
-
-## statsmodels
-from statsmodels.stats.multitest import fdrcorrection
 
 ## Joblib
 from joblib import Parallel, delayed
