@@ -63,9 +63,15 @@ def calculate_correlations(
     Returns
     -------
     If write_out is true, the mcPCCs and BH-corrected p-values will be saved to the specified directory. Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. To get a matrix of mcPCCs that have BH-corrected p-values lower than a specified value, threshold the BH-corrected p-value matrix values and multiply the resulting bool matrix with the mcPCCs. For example:
+
+    # After running correlations
+
+    from scipy.sparse import load_npz
     
-    BH_cutoff = BH_corrected_pvalues[BH_corrected_pvalues<0.05]
-    mcPCCs_significant = mcPCCs * BH_cutoff
+    mcPCCs = load_npz(f'{write_out}/mcPCCs.npz')
+    BH_corrected_pvalues = load_npz(f'{write_out}/BH_corrected_pvalues.npz')
+    mcPCCs_significant = mcPCCs.copy()
+    mcPCCs_significant[BH_corrected_pvalues > 0.05] = 0
 
     If necessary, calculate the mcPCCs symmetrical matrix by adding the lower triangular matrix to its transpose:
 
@@ -162,13 +168,14 @@ def calculate_correlations(
 
     # Convert mcPCCs to lower triangular
     mcPCCs_lower = np.tril(mcPCCs, -1)
+    mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
 
     if write_out is not None:
         if previously_run:
             if save_mcPCCs:
                 if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
-                np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs_lower)
+                save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if save_coefficients and (store_intermediate_results):
                 if verbose > 1:
                     print('Writing coefficients to disk.', flush = True)
@@ -178,7 +185,7 @@ def calculate_correlations(
         else:
             if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
-            np.savez_compressed(write_out + 'mcPCCs.npz', mcPCCs=mcPCCs_lower)
+            save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if store_intermediate_results:
                 print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
