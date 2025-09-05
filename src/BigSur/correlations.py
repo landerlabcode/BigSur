@@ -62,22 +62,20 @@ def calculate_correlations(
 
     Returns
     -------
-    If write_out is true, the mcPCCs and BH-corrected p-values will be saved to the specified directory. Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. To get a matrix of mcPCCs that have BH-corrected p-values lower than a specified value, threshold the BH-corrected p-value matrix values and multiply the resulting bool matrix with the mcPCCs. For example:
+    If write_out is true, the mcPCCs and BH-corrected p-values will be saved to the specified directory (write_out). Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant (and therefore not calculated) are stored as 1's. 
 
-    # After running correlations
+    Example
+    -------
+    calculate_correlations(adata, layer = 'counts', verbose = 2, write_out=write_out_folder, previously_run=False)
 
     from scipy.sparse import load_npz
     
-    mcPCCs = load_npz(f'{write_out}/mcPCCs.npz')
-    BH_corrected_pvalues = load_npz(f'{write_out}/BH_corrected_pvalues.npz')
+    mcPCCs = load_npz(f'{write_out_folder}/mcPCCs.npz')
+    BH_corrected_pvalues = load_npz(f'{write_out_folder}/BH_corrected_pvalues.npz')
     mcPCCs_significant = mcPCCs.copy()
-    mcPCCs_significant[BH_corrected_pvalues > 0.05] = 0
+    mcPCCs_significant[BH_corrected_pvalues > 0.05] = 0 # Threshold mcPCCs to those that have BH-corrected p-values <= 0.05
+    mcPCCs_significant_symmetrical = mcPCCs_significant + mcPCCs_significant.T # If necessary, calculate the mcPCCs symmetrical matrix by adding the lower triangular matrix to its transpose.
 
-    If necessary, calculate the mcPCCs symmetrical matrix by adding the lower triangular matrix to its transpose:
-
-    mcPCCs_significant_symmetrical = mcPCCs_significant + mcPCCs_significant.T
-
-    Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant (and therefore not calculated) are stored as 1's. 
     '''
 
     # Setup
