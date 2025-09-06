@@ -27,7 +27,8 @@ from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
 
 
-def QuickTest6CF(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
+def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
+    '''This function tests correlations to see if they pass a series of tests. It returns a boolean array of the correlations that pass all tests.'''
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
 
     def testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
@@ -45,9 +46,10 @@ def QuickTest6CF(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_low
     cut_bool2 = ~(cut_vec2 < 0) # return False if cut_vec2 is negative
 
     correlations_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
-
     return correlations_to_keep
-def SecondTestCF(c2, c3, c4, c5, first_pass_cutoff, n_jobs):
+
+def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
+    '''This function tests correlations of genes that have less than or equal to 84 total UMIs (for either gene). Certain of these correlations will not be significant. This function identifies these correlations and removes them before root finding.'''
     
     cut = np.sqrt(2) * erfcinv(2 * 10**(-first_pass_cutoff))
 
@@ -174,7 +176,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if verbose > 1:
         print("Beginning root finding process for Cornish Fisher.")
     # First passing test
-    correlations_to_keep = QuickTest6CF(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
+    correlations_to_keep = find_passing_correlations_1(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
 
     if verbose > 1:
         print(f"First pruning complete.", flush = True)
@@ -182,19 +184,8 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
-    test_array_rows = gene_totals[rows]
-    test_array_cols = gene_totals[cols]
+    indices_to_keep, indices_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep)
 
-    to_test_bool_rows = test_array_rows <= 84
-    to_test_bool_cols = test_array_cols <= 84
-    
-    to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
-
-    # If gene total > 84, we keep for root finding
-    indices_to_keep = np.where(~to_test_further & correlations_to_keep)[0]
-
-    # If gene total ≤ 84, we need to test further
-    indices_to_test_further = np.where(to_test_further & correlations_to_keep)[0]
     c2_lower_flat_pruned_1_more_testing = c2_lower_flat[indices_to_test_further]
     c3_lower_flat_pruned_1_more_testing = c3_lower_flat[indices_to_test_further]
     c4_lower_flat_pruned_1_more_testing = c4_lower_flat[indices_to_test_further]
@@ -202,7 +193,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
 
     # Third passing test
     # Function is correct
-    indices_passing = SecondTestCF(c2_lower_flat_pruned_1_more_testing, c3_lower_flat_pruned_1_more_testing, c4_lower_flat_pruned_1_more_testing, c5_lower_flat_pruned_1_more_testing, first_pass_cutoff, n_jobs=n_jobs)
+    indices_passing = find_passing_correlations_2(c2_lower_flat_pruned_1_more_testing, c3_lower_flat_pruned_1_more_testing, c4_lower_flat_pruned_1_more_testing, c5_lower_flat_pruned_1_more_testing, first_pass_cutoff)
 
     indices_to_keep = np.unique(np.append(indices_to_keep, indices_passing))
 
@@ -235,3 +226,20 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if verbose > 1:
         print(f"Root finding complete, took {toc - tic:0.4f} seconds.")
     return rows_to_keep, cols_to_keep, correlation_roots
+
+def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
+    '''This function tests the total UMIs of genes in correlations that passed the first test. If either gene in a correlation has total UMIs ≤ 84, that correlation may not be significant. We test these correlations further in find_passing_correlations_2. If both genes have total UMIs > 84, the correlation is kept for root finding.'''
+    test_array_rows = gene_totals[rows]
+    test_array_cols = gene_totals[cols]
+
+    to_test_bool_rows = test_array_rows <= 84
+    to_test_bool_cols = test_array_cols <= 84
+    
+    to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
+
+    # If gene total > 84, we keep for root finding
+    indices_to_keep = np.where(~to_test_further & correlations_to_keep)[0]
+
+    # If gene total ≤ 84, we need to test further
+    indices_to_test_further = np.where(to_test_further & correlations_to_keep)[0]
+    return indices_to_keep, indices_to_test_further
