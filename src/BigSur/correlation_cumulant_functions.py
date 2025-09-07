@@ -21,9 +21,7 @@ from scipy.sparse import csr_matrix, save_npz
 
 # Functions for p-value calculations
 def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
-    
-   
-    
+
     n_cells = residuals.shape[0]
     f2 = e_moments[0,:]
     f3 = e_moments[1,:]
@@ -36,10 +34,19 @@ def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
     k3_matrix = (one_plus_cv_squared_times_emat*(3+cv**2*(3+cv**2)*e_mat))/(np.sqrt(e_mat)*(one_plus_cv_squared_times_emat)**(3/2))
     k4_matrix = (1+e_mat*(3+cv**2*(7+e_mat*(6+3*cv**2*(6+e_mat)+cv**4*(6+(16+15*cv**2+6*cv**4+cv**6)*e_mat)))))/(e_mat*(one_plus_cv_squared_times_emat)**2)
     k5_matrix_2 = 1/(e_mat**(3/2)*(one_plus_cv_squared_times_emat)**(5/2)) * (1 + 5*(2+3*cv**2)*e_mat + 5*cv**2*(8+15*cv**2+5*cv**4)*e_mat**2+10*cv**4*(6+17*cv**2+15*cv**4+6*cv**6+cv**8)*e_mat**3+cv**6*(30+135*cv**2+222*cv**4+205*cv**6+120*cv**8+45*cv**10+10*cv**12+cv**14)*e_mat**4)
+    
+    # QR decomposition to get crossproducts to reduce numerical issues
+    _, R = np.linalg.qr(k3_matrix)
+    k3_crossprod = R.T @ R
+    del R
 
-    k3_crossprod = np.matmul(k3_matrix.T, k3_matrix)
-    k4_crossprod = np.matmul(k4_matrix.T, k4_matrix)
-    k5_crossprod_2 = np.matmul(k5_matrix_2.T, k5_matrix_2)
+    _, R = np.linalg.qr(k4_matrix)
+    k4_crossprod = R.T @ R
+    del R
+
+    _, R = np.linalg.qr(k5_matrix_2)
+    k5_crossprod_2 = R.T @ R
+    del R
 
     kappa2 = (1/(n_cells-1)**2) * f2 * n_cells
     kappa3 = (1/(n_cells-1)**3) * f3 * k3_crossprod
