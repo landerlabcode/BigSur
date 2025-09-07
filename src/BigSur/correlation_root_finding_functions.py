@@ -26,7 +26,6 @@ from scipy.special import erfcinv
 from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
 
-
 def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
     '''This function tests correlations to see if they pass a series of tests. It returns a boolean array of the correlations that pass all tests.'''
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
@@ -45,8 +44,8 @@ def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_low
     cut_vec2 = testfunc_2(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_bool2 = ~(cut_vec2 < 0) # return False if cut_vec2 is negative
 
-    correlations_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
-    return correlations_to_keep
+    indices_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
+    return indices_to_keep
 
 def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     '''This function tests correlations of genes that have less than or equal to 84 total UMIs (for either gene). Certain of these correlations will not be significant. This function identifies these correlations and removes them before root finding.'''
@@ -91,6 +90,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
 
     # indices_passing = np.where(correlations_passing)[0]
 
+    # index_tracker is the elements of the flattened coefficients
     index_tracker = np.array(list(range(c2.shape[0])))
 
     c2_to_subset = c2.copy()
@@ -167,7 +167,6 @@ def find_real_root(*coefs):
     p = Polynomial([*coefs], domain=[-100, 100])
     complex_roots = p.roots()
     real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
-    # Why return min(abs(root))?
     root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
     return root
 
@@ -176,7 +175,14 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if verbose > 1:
         print("Beginning root finding process for Cornish Fisher.")
     # First passing test
-    correlations_to_keep = find_passing_correlations_1(rows, cols,c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
+    indices_to_keep = find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
+
+    # # Testing block, delete me
+    # first_pass = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
+    # first_pass[rows, cols] = indices_to_keep
+    # first_pass_sparse = csr_matrix(first_pass)
+    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/first_pass_sparse.npz', first_pass_sparse)
+    # # Testing block, delete me
 
     if verbose > 1:
         print(f"First pruning complete.", flush = True)
@@ -184,7 +190,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
-    indices_to_keep, indices_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep)
+    indices_to_keep, indices_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, indices_to_keep)
 
     c2_lower_flat_pruned_1_more_testing = c2_lower_flat[indices_to_test_further]
     c3_lower_flat_pruned_1_more_testing = c3_lower_flat[indices_to_test_further]
@@ -210,6 +216,13 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     rows_to_keep = rows[indices_to_keep]
     cols_to_keep = cols[indices_to_keep]
 
+    # # Testing block, delete me
+    # indices_passing_final  = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
+    # indices_passing_final[rows_to_keep, cols_to_keep] = indices_to_keep
+    # indices_passing_final_sparse = csr_matrix(indices_passing_final)
+    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.npz', indices_passing_final_sparse)
+    # # Testing block, delete me
+
     if verbose > 1:
         print("Beginning root finding.", flush=True)
     tic = time.perf_counter()
@@ -225,6 +238,14 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     toc = time.perf_counter()
     if verbose > 1:
         print(f"Root finding complete, took {toc - tic:0.4f} seconds.")
+
+    # # Testing block, delete me
+    # roots_matrix  = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
+    # roots_matrix[rows_to_keep, cols_to_keep] = correlation_roots
+    # roots_matrix_sparse = csr_matrix(roots_matrix)
+    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse.npz', roots_matrix_sparse)
+    # # Testing block, delete me
+    
     return rows_to_keep, cols_to_keep, correlation_roots
 
 def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
@@ -236,6 +257,13 @@ def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
     to_test_bool_cols = test_array_cols <= 84
     
     to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
+
+    # # Testing block, delete me
+    # smaller_or_equal_to_84 = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
+    # smaller_or_equal_to_84[rows, cols] = to_test_further
+    # smaller_or_equal_to_84_sparse = csr_matrix(smaller_or_equal_to_84)
+    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/smaller_or_equal_to_84_sparse.npz', smaller_or_equal_to_84_sparse)
+    # # Testing block, delete me
 
     # If gene total > 84, we keep for root finding
     indices_to_keep = np.where(~to_test_further & correlations_to_keep)[0]
