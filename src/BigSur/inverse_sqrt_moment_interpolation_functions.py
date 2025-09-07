@@ -1,3 +1,4 @@
+from turtle import pd
 import numpy as np
 
 ### Scipy
@@ -30,6 +31,16 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i]) for i in range(points.shape[0])])
 
     e_moments = inv_sqrt_moment_interpolation(sample_moments, g_counts, points)
+
+    # import pandas as pd
+    
+    # e_moments_1 = pd.read_csv( "/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_R_testing/moment_interp_1.csv", index_col = 0)
+    # e_moments_2 = pd.read_csv( "/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_R_testing/moment_interp_2.csv", index_col = 0)
+    # e_moments_3 = pd.read_csv( "/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_R_testing/moment_interp_3.csv", index_col = 0)
+    # e_moments_4 = pd.read_csv( "/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_R_testing/moment_interp_4.csv", index_col = 0)
+
+    # e_moments_R = np.array([e_moments_1.to_numpy(), e_moments_2.to_numpy(), e_moments_3.to_numpy(), e_moments_4.to_numpy()])
+
     return e_moments
 def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed = 0):
     mu = np.log(sim_emat_subset / np.sqrt(1 + c**2))
