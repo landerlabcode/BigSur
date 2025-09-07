@@ -3,6 +3,8 @@ import numpy as np
 import numexpr as ne
 import os
 
+from scipy.sparse import load_npz
+
 ## BigSur
 from .preprocessing import calculate_residuals, calculate_mcfano, calculate_emat
 
@@ -72,7 +74,7 @@ def load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals,
     save_mcPCCs = False
     if previously_run:
         try:
-            mcPCCs = np.load(write_out + 'mcPCCs.npz', allow_pickle=True)['mcPCCs']
+            mcPCCs = load_npz(write_out + 'mcPCCs.npz')
         except FileNotFoundError:
             save_mcPCCs = True
             print("mcPCCs file not found, recalculating.")
