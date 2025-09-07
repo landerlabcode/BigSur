@@ -164,15 +164,14 @@ def calculate_correlations(
 
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
 
-    # Convert mcPCCs to lower triangular
-    mcPCCs_lower = np.tril(mcPCCs, -1)
-    mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
-
     if write_out is not None:
         if previously_run:
             if save_mcPCCs:
                 if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
+                # Convert mcPCCs to lower triangular
+                mcPCCs_lower = np.tril(mcPCCs, -1)
+                mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
                 save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if save_coefficients and (store_intermediate_results):
                 if verbose > 1:
@@ -183,12 +182,18 @@ def calculate_correlations(
         else:
             if verbose > 1:
                     print('Writing mcPCCs to disk.', flush = True)
+            # Convert mcPCCs to lower triangular
+            mcPCCs_lower = np.tril(mcPCCs, -1)
+            mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
             save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if store_intermediate_results:
                 print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
     else:
-        adata.varm["mcPCCs"] = mcPCCs
+        # Convert mcPCCs to lower triangular
+        mcPCCs_lower = np.tril(mcPCCs, -1)
+        mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
+        adata.varm["mcPCCs"] = mcPCCs_lower_sparse
     del mcPCCs
 
     rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
