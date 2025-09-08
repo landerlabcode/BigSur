@@ -164,7 +164,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
 # Find roots of polynomials for each row
 def find_real_root(*coefs):
     '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
-    p = Polynomial([*coefs], domain=[-100, 100])
+    p = Polynomial([*coefs], domain=[-3, 3])
     complex_roots = p.roots()
     real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
     root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
@@ -237,7 +237,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
     toc = time.perf_counter()
     if verbose > 1:
-        print(f"Root finding complete, took {toc - tic:0.4f} seconds.")
+        print(f"Root finding complete, took {toc - tic:0.4f} seconds.") # old domain, took 27.92s
 
     # # Testing block, delete me
     # roots_matrix  = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
