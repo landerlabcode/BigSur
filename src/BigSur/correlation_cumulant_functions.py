@@ -110,12 +110,6 @@ def calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv):
 
     return kappa2, kappa3, kappa4, kappa5
 
-def calculate_cross_product_using_QR(k3_matrix):
-    '''Calculates k3_matrix.T @ k3_matrix using QR factorization. QR factorization reduces numerical instability issues.'''
-    _, R = np.linalg.qr(k3_matrix)
-    k3_crossprod = R.T @ R
-    return k3_crossprod
-
 def load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments):
     save_kappas = False
     if previously_run:
