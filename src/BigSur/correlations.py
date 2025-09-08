@@ -119,12 +119,6 @@ def calculate_correlations(
         adata.var["mc_Fano"] = np.array(mc_fanos).flatten()
     adata.uns['CV_for_mc_Fano_fit'] = cv
 
-    # Calculate mcPCCs
-    tic = time.perf_counter()
-    save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals, n_cells, mc_fanos)
-
-    del mc_fanos
-
     # Calculate inverse mcFano moments
     tic = time.perf_counter()
     e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist) # These functions are correct
@@ -160,7 +154,11 @@ def calculate_correlations(
     else:
         adata.layers["residuals"] = residuals
 
-    del residuals, e_moments, e_mat
+    # Calculate mcPCCs
+    tic = time.perf_counter()
+    save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals, n_cells, mc_fanos)
+
+    del mc_fanos, residuals, e_moments, e_mat
 
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
 
