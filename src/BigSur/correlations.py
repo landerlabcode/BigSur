@@ -54,11 +54,11 @@ def calculate_correlations(
     adata - adata object containing information about the raw counts and gene names.
     layer - String, describing the layer of adata object containing raw counts (pass "X" if raw counts are in adata.X).
     cv - Float, coefficient of variation for the given dataset. If None, the CV will be estimated.
-    write_out - String, path to directory where intermediate results will be written. If calculating correlations on a large dataset, this is highly recommended to conserve memory.
+    write_out - String, path to directory where intermediate results will be written. 
     previously_run - Bool, if True, the function will attempt to load previously calculated results from the write_out directory.
     store_intermediate_results - Bool, if True, intermediate results will be saved to disk.
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
-    verbose - Int, whether to print computations and top 100 genes. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
+    verbose - Int, whether to print computations. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
 
     Returns
     -------
@@ -101,9 +101,13 @@ def calculate_correlations(
 
     toc = time.perf_counter()
     if verbose > 1:
-        print(
-            f"Finished calculating modified corrected Fano factors for {mc_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
-        )
+        time_diff = toc-tic
+        if time_diff < 60:
+            print(f"Finished calculating modified corrected Fano factors for {mc_fanos.shape[0]} genes in {(time_diff):04f} seconds.")
+        else:
+            print(
+                f"Finished calculating modified corrected Fano factors for {mc_fanos.shape[0]} genes in {(time_diff/60):04f} minutes."
+            )
 
     # Store mc_Fano and cv
     if write_out is not None:
@@ -125,9 +129,15 @@ def calculate_correlations(
 
     toc = time.perf_counter()
     if verbose > 1:
-        print(
-            f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
-        )
+        time_diff = toc-tic
+        if time_diff < 60:
+            print(
+                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff):04f} seconds."
+            )
+        else:
+            print(
+                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff/60):04f} minutes."
+            )
 
     save_kappas, kappa2, kappa3, kappa4, kappa5 = load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments)
 
@@ -161,6 +171,8 @@ def calculate_correlations(
     del mc_fanos, residuals, e_moments, e_mat
 
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
+
+    #np.savez_compressed(write_out + 'mcPCCs_full.npz', mcPCCs=mcPCCs)
 
     if write_out is not None:
         if previously_run:
@@ -203,7 +215,15 @@ def calculate_correlations(
     correlation_pvalues = calculate_pvalues(correlation_roots, n_jobs=n_jobs)
     toc = time.perf_counter()
     if verbose > 1:
-        print(f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(toc-tic):04f} seconds.")
+        time_diff = toc-tic
+        if time_diff < 60:
+            print(
+                f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(time_diff):04f} seconds."
+            )
+        else:
+            print(
+                f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(time_diff/60):04f} minutes."
+            )
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
     # Make new empty matrix
