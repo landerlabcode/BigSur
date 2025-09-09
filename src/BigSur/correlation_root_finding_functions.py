@@ -205,7 +205,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
 
     if verbose > 1:
         n_correlations_removed = rows.shape[0] - indices_to_keep.shape[0]
-        print(f"Second pruning complete. In total, removed {n_correlations_removed} ({np.round(n_correlations_removed/rows.shape[0],3)*100}%) correlations. {indices_to_keep.shape[0]} correlations remain.", flush=True)
+        print(f"Second pruning complete. In total, removed {n_correlations_removed} ({np.round(n_correlations_removed/rows.shape[0], 3)*100:.1f}%) correlations. {indices_to_keep.shape[0]} correlations remain.", flush=True)
 
     c1_lower_flat_to_keep = c1_lower_flat[indices_to_keep]
     c2_lower_flat_to_keep = c2_lower_flat[indices_to_keep]

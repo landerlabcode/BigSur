@@ -13,11 +13,11 @@ def calculate_mcPCCs_coefficients(k2, k3, k4, k5, mcPCCs):
 
     dict_for_calculations = {'k2':k2, 'k3':k3, 'k4':k4, 'k5':k5, 'mcPCCs':mcPCCs}
 
-    c1 = ne.evaluate('-mcPCCs - k3/(6*k2) + 17*k3**3/(324*k2**4) - k3*k4/(12*k2**3) + k5/(40*k2**2)', dict_for_calculations)
-    c2 = ne.evaluate('sqrt(k2) + 5*k3**2/(36*k2**(5/2)) - k4/(8*k2**(3/2))', dict_for_calculations)
-    c3 = ne.evaluate('k3/(6*k2) - 53*k3**3/(324*k2**4) + 5*k3*k4/(24*k2**3) - k5/(20*k2**2)', dict_for_calculations)
-    c4 = ne.evaluate('-k3**2/(18*k2**(5/2)) + k4/(24*k2**(3/2))', dict_for_calculations)
-    c5 = ne.evaluate('k3**3/(27*k2**4) - k3*k4/(24*k2**3) + k5/(120*k2**2)', dict_for_calculations)
+    c1 = ne.evaluate('-mcPCCs-k3/(6*k2)+17*k3**3/(324*k2**4)-k3*k4/(12*k2**3)+k5/(40*k2**2)', dict_for_calculations)
+    c2 = ne.evaluate('sqrt(k2)+5*k3**2/(36*k2**(5/2))-k4/(8*k2**(3/2))', dict_for_calculations)
+    c3 = ne.evaluate('k3/(6*k2)-53*k3**3/(324*k2**4)+5*k3*k4/(24*k2**3)-k5/(20*k2**2)', dict_for_calculations)
+    c4 = ne.evaluate('-k3**2/(18*k2**(5/2))+k4/(24*k2**(3/2))', dict_for_calculations)
+    c5 = ne.evaluate('k3**3/(27*k2**4)-k3*k4/(24*k2**3)+k5/(120*k2**2)', dict_for_calculations)
 
     mcPCCs_length = c1.shape[0]
 
