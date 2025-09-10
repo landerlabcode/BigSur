@@ -125,17 +125,27 @@ def load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts
             tic = time.perf_counter()
             kappa2, kappa3, kappa4, kappa5 = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv)
             toc = time.perf_counter()
-            if verbose > 1:
+            time_diff = toc-tic
+            if time_diff < 60:
                 print(
-                    f"Finished calculating cumulants for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+                    f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff):04f} seconds."
+                )
+            else:
+                print(
+                    f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff/60):04f} minutes."
                 )
     else:
         tic = time.perf_counter()
         kappa2, kappa3, kappa4, kappa5 = calculate_mcPCCs_cumulants(residuals, e_moments, e_mat, cv)
         toc = time.perf_counter()
-        if verbose > 1:
+        time_diff = toc-tic
+        if time_diff < 60:
             print(
-                f"Finished calculating cumulants for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
+                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff):04f} seconds."
+            )
+        else:
+            print(
+                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff/60):04f} minutes."
             )
             
     return save_kappas,kappa2,kappa3,kappa4,kappa5
