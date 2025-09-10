@@ -26,7 +26,7 @@ from scipy.special import erfcinv
 from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
 
-def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff):
+def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, indices_of_cumulants):
     '''This function tests correlations to see if they pass a series of tests. It returns a boolean array of the correlations that pass all tests.'''
     cut = np.sqrt(2) * erfcinv(2 * 10 ** -first_pass_cutoff)
 
@@ -44,13 +44,12 @@ def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_low
     cut_vec2 = testfunc_2(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_bool2 = ~(cut_vec2 < 0) # return False if cut_vec2 is negative
 
-    indices_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
-    return indices_to_keep
+    logvec_to_keep = np.logical_and(cut_bool, cut_bool2) # keep correlations if both cut_bool 1 and cut_bool 2 are True
+    #indices_to_keep = indices_of_cumulants[logvec_to_keep]
+    return logvec_to_keep
 
-def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
+def find_passing_correlations_2(rows, cols, c2, c3, c4, c5, first_pass_cutoff, logvec_to_test_further):
     '''This function tests correlations of genes that have less than or equal to 84 total UMIs (for either gene). Certain of these correlations will not be significant. This function identifies these correlations and removes them before root finding.'''
-    
-    cut = np.sqrt(2) * erfcinv(2 * 10**(-first_pass_cutoff))
 
     def derivative_function(x, c2, c3, c4, c5):
         derivative = c2 + 2*c3*x + 3*c4*x**2 + 4*c5*x**3
@@ -91,18 +90,21 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     # indices_passing = np.where(correlations_passing)[0]
 
     # index_tracker is the elements of the flattened coefficients
-    index_tracker = np.array(list(range(c2.shape[0])))
 
     # c2, c3, c4, c5 =
     #x[4], x[5], x[6], x[7]
 
-    c2_to_subset = c2.copy()
-    c3_to_subset = c3.copy()
-    c4_to_subset = c4.copy()
-    c5_to_subset = c5.copy()
+    cut = np.sqrt(2) * erfcinv(2 * 10**(-first_pass_cutoff))
+
+    indices_of_cumulants = np.array(list(range(c5.shape[0])))
+    index_tracker = indices_of_cumulants[logvec_to_test_further]
+    c2_to_subset = c2[logvec_to_test_further].copy()
+    c3_to_subset = c3[logvec_to_test_further].copy()
+    c4_to_subset = c4[logvec_to_test_further].copy()
+    c5_to_subset = c5[logvec_to_test_further].copy()
 
     first_test = derivative_function(-cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0 # If first test is True, keep correlations
-    indices_to_keep = np.where(first_test)[0]
+    indices_to_keep = index_tracker[np.where(first_test)[0]]
 
     c2_to_subset = c2_to_subset[~first_test]
     c3_to_subset = c3_to_subset[~first_test]
@@ -131,7 +133,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     sqrt_val = np.sqrt(sqrt_inner)
     expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
 
-    # First expression is correct
+    # Fourth test.
     fourth_test = (
         np.logical_and(np.logical_and(-cut < expr1, expr1 < cut) ,
         ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset-15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset-c3_to_subset*sqrt_val)) < 0
@@ -144,7 +146,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     index_tracker = index_tracker[~fourth_test]
 
     
-
+    # Fifth test. Recalculate sqrt_val because the cumulants (c#'s) have changed.
     sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
     sqrt_val = np.sqrt(sqrt_inner)
     expr2 = (3*c4_to_subset+sqrt_val)/(12*c5_to_subset)
@@ -161,7 +163,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
 
     # If any genes still exist in index_tracker, keep
 
-    indices_to_keep = np.append(indices_to_keep, index_tracker) # If fourth_test is True, do not keep correlations
+    indices_to_keep = np.append(indices_to_keep, index_tracker)
 
     return indices_to_keep
 
@@ -179,10 +181,13 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if verbose > 1:
         print("Beginning root finding process for Cornish Fisher.")
     # First passing test
-    indices_to_keep = find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
+    indices_of_cumulants = np.array(list(range(c1_lower_flat.shape[0])))
+
+
+    logvec_to_keep = find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, indices_of_cumulants)
 
     # # Testing block, delete me
-    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/first_pass_sparse.npz', rows=rows, cols=cols, indices_to_keep=indices_to_keep)
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/first_pass_sparse.npz', rows=rows, cols=cols, indices_to_keep=logvec_to_keep)
     # # Testing block, delete me
 
     if verbose > 1:
@@ -191,20 +196,16 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # Second passing test.
     # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them for root finding. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
-    indices_to_keep, indices_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, indices_to_keep)
-
-    c2_lower_flat_pruned_1_more_testing = c2_lower_flat[indices_to_test_further]
-    c3_lower_flat_pruned_1_more_testing = c3_lower_flat[indices_to_test_further]
-    c4_lower_flat_pruned_1_more_testing = c4_lower_flat[indices_to_test_further]
-    c5_lower_flat_pruned_1_more_testing = c5_lower_flat[indices_to_test_further]
+    logvec_to_keep, logvec_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, logvec_to_keep)
 
     # Third passing test
-    # Function is correct
-    indices_passing = find_passing_correlations_2(c2_lower_flat_pruned_1_more_testing, c3_lower_flat_pruned_1_more_testing, c4_lower_flat_pruned_1_more_testing, c5_lower_flat_pruned_1_more_testing, first_pass_cutoff)
+    indices_passing = find_passing_correlations_2(rows, cols, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, logvec_to_test_further)
 
     # # Testing block, delete me
     # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_SecondTestCF.npz', rows=rows[indices_passing], cols=cols[indices_passing], indices_to_keep=indices_passing)
     # # Testing block, delete me
+
+    indices_to_keep = np.where(logvec_to_keep)
 
     indices_to_keep = np.unique(np.append(indices_to_keep, indices_passing))
 
@@ -250,7 +251,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     
     return rows_to_keep, cols_to_keep, correlation_roots
 
-def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
+def find_total_umis_of_genes(rows, cols, gene_totals, logvec_to_keep):
     '''This function tests the total UMIs of genes in correlations that passed the first test. If either gene in a correlation has total UMIs ≤ 84, that correlation may not be significant. We test these correlations further in find_passing_correlations_2. If both genes have total UMIs > 84, the correlation is kept for root finding.'''
     test_array_rows = gene_totals[rows]
     test_array_cols = gene_totals[cols]
@@ -265,8 +266,8 @@ def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
     # # Testing block, delete me
 
     # If gene total > 84, we keep for root finding
-    indices_to_keep = np.where(~to_test_further & correlations_to_keep)[0]
+    logvec_to_keep_new = ~to_test_further & logvec_to_keep
 
     # If gene total ≤ 84, we need to test further
-    indices_to_test_further = np.where(to_test_further & correlations_to_keep)[0]
-    return indices_to_keep, indices_to_test_further
+    logvec_to_test_further = to_test_further & logvec_to_keep
+    return logvec_to_keep_new, logvec_to_test_further
