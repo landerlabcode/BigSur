@@ -39,7 +39,7 @@ def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_low
     # Compute cut.vec for both pos and neg cut
     cut_vec_1 = testfunc_1(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_vec_2 = testfunc_1(-cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
-    cut_bool = ~(cut_vec_1 * cut_vec_2 < 0)#~np.logical_and(cut_vec_1 < 0, cut_vec_2 < 0) # return False if both are negative
+    cut_bool = ~(cut_vec_1 * cut_vec_2 < 0)# return False if both are negative
     
     cut_vec2 = testfunc_2(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_bool2 = ~(cut_vec2 < 0) # return False if cut_vec2 is negative
@@ -93,6 +93,9 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     # index_tracker is the elements of the flattened coefficients
     index_tracker = np.array(list(range(c2.shape[0])))
 
+    # c2, c3, c4, c5 =
+    #x[4], x[5], x[6], x[7]
+
     c2_to_subset = c2.copy()
     c3_to_subset = c3.copy()
     c4_to_subset = c4.copy()
@@ -107,7 +110,7 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     c5_to_subset = c5_to_subset[~first_test]
     index_tracker = index_tracker[~first_test]
 
-    second_test = (derivative_function(cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0) # If second test is True, do not keep correlations
+    second_test = derivative_function(cut, c2_to_subset, c3_to_subset, c4_to_subset, c5_to_subset) < 0 # If second test is True, do not keep correlations
 
     c2_to_subset = c2_to_subset[~second_test]
     c3_to_subset = c3_to_subset[~second_test]
@@ -127,8 +130,8 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
     sqrt_val = np.sqrt(sqrt_inner)
     expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
-    expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
 
+    # First expression is correct
     fourth_test = (
         np.logical_and(np.logical_and(-cut < expr1, expr1 < cut) ,
         ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset-15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset-c3_to_subset*sqrt_val)) < 0
@@ -140,14 +143,15 @@ def find_passing_correlations_2(c2, c3, c4, c5, first_pass_cutoff):
     c5_to_subset = c5_to_subset[~fourth_test]
     index_tracker = index_tracker[~fourth_test]
 
+    
+
     sqrt_inner = 9*c4_to_subset**2-24*c3_to_subset*c5_to_subset
     sqrt_val = np.sqrt(sqrt_inner)
-    expr1 = (3*c4_to_subset - sqrt_val) / (12*c5_to_subset)
-    expr2 = (3*c4_to_subset + sqrt_val) / (12*c5_to_subset)
+    expr2 = (3*c4_to_subset+sqrt_val)/(12*c5_to_subset)
 
     fifth_test = np.logical_and(
         np.logical_and(-cut < expr2,  expr2 < cut), 
-        ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset+15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset+c4_to_subset*sqrt_val))<0) ) # If True, do not keep correlations
+        ((45*c4_to_subset**3-36*c3_to_subset*c4_to_subset*c5_to_subset+15*c4_to_subset**2*sqrt_val+8*c5_to_subset*(9*c2_to_subset*c5_to_subset+c3_to_subset*sqrt_val))<0) ) # If True, do not keep correlations
     
     c2_to_subset = c2_to_subset[~fifth_test]
     c3_to_subset = c3_to_subset[~fifth_test]
@@ -178,17 +182,14 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     indices_to_keep = find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff)
 
     # # Testing block, delete me
-    # first_pass = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
-    # first_pass[rows, cols] = indices_to_keep
-    # first_pass_sparse = csr_matrix(first_pass)
-    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/first_pass_sparse.npz', first_pass_sparse)
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/first_pass_sparse.npz', rows=rows, cols=cols, indices_to_keep=indices_to_keep)
     # # Testing block, delete me
 
     if verbose > 1:
         print(f"First pruning complete.", flush = True)
 
     # Second passing test.
-    # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them in all cases. If the total UMIs of a gene ≤ 84, we need to test further.
+    # Test gene totals for threshold. If the total UMIs of a gene > 84, we keep them for root finding. If the total UMIs of a gene ≤ 84, we need to test further.
     ## I am testing each row and column of the correlations (remember that we flattened the correlation matrix to 1D). It's very redundant but it's still really fast.
     indices_to_keep, indices_to_test_further = find_total_umis_of_genes(rows, cols, gene_totals, indices_to_keep)
 
@@ -200,6 +201,10 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # Third passing test
     # Function is correct
     indices_passing = find_passing_correlations_2(c2_lower_flat_pruned_1_more_testing, c3_lower_flat_pruned_1_more_testing, c4_lower_flat_pruned_1_more_testing, c5_lower_flat_pruned_1_more_testing, first_pass_cutoff)
+
+    # # Testing block, delete me
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_SecondTestCF.npz', rows=rows[indices_passing], cols=cols[indices_passing], indices_to_keep=indices_passing)
+    # # Testing block, delete me
 
     indices_to_keep = np.unique(np.append(indices_to_keep, indices_passing))
 
@@ -217,10 +222,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     cols_to_keep = cols[indices_to_keep]
 
     # # Testing block, delete me
-    # indices_passing_final  = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
-    # indices_passing_final[rows_to_keep, cols_to_keep] = indices_to_keep
-    # indices_passing_final_sparse = csr_matrix(indices_passing_final)
-    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.npz', indices_passing_final_sparse)
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.npz', rows=rows_to_keep, cols=cols_to_keep, indices_to_keep=indices_to_keep)
     # # Testing block, delete me
 
     if verbose > 1:
@@ -259,10 +261,7 @@ def find_total_umis_of_genes(rows, cols, gene_totals, correlations_to_keep):
     to_test_further = np.logical_or(to_test_bool_rows, to_test_bool_cols)
 
     # # Testing block, delete me
-    # smaller_or_equal_to_84 = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
-    # smaller_or_equal_to_84[rows, cols] = to_test_further
-    # smaller_or_equal_to_84_sparse = csr_matrix(smaller_or_equal_to_84)
-    # save_npz('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/smaller_or_equal_to_84_sparse.npz', smaller_or_equal_to_84_sparse)
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/smaller_or_equal_to_84_sparse.npz', rows=rows, cols=cols, to_test_further=to_test_further)
     # # Testing block, delete me
 
     # If gene total > 84, we keep for root finding
