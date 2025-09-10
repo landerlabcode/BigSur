@@ -2,6 +2,7 @@ import time
 import numpy as np
 import numexpr as ne
 import os
+import pandas as pd
 
 from scipy.sparse import load_npz
 
@@ -93,7 +94,7 @@ def load_or_calculate_mc_fanos(write_out, previously_run, residuals, n_cells):
     save_mc_fanos = False
     if previously_run:
         try:
-            mc_fanos = np.load(write_out + 'mc_fanos.npz', allow_pickle=True)['mc_fanos']
+            mc_fanos = pd.read_csv(write_out + 'mc_Fano.csv', index_col = 0).to_numpy().flatten()
         except FileNotFoundError:
             print("mcFano file not found, recalculating.")
             save_mc_fanos = True
