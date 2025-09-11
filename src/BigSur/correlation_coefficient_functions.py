@@ -48,21 +48,9 @@ def load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts,
         else:
             print('Coefficients file not found, recalculating.')
             save_coefficients = True
-            tic = time.perf_counter()
             rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs) # These functions are correct
-            toc = time.perf_counter()
-            if verbose > 1:
-                print(
-                    f"Finished calculating coefficients for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
-                )
     else:
-        tic = time.perf_counter()
         rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs) # These functions are correct
-        toc = time.perf_counter()
-        if verbose > 1:
-            print(
-                f"Finished calculating coefficients for {g_counts.shape[0]} genes in {(toc-tic):04f} seconds."
-            )
             
     return save_coefficients,rows,cols,c1_lower_flat,c2_lower_flat,c3_lower_flat,c4_lower_flat,c5_lower_flat
 
@@ -71,7 +59,7 @@ def calculate_mcPCCs(n_cells, mc_fanos, residuals):
     mcPCCs = 1/((n_cells - 1) * np.sqrt(np.outer(mc_fanos, mc_fanos.T))) * (residuals.T @ residuals)
     return mcPCCs
 
-def load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals, n_cells, mc_fanos):
+def load_or_calculate_mcpccs(write_out, previously_run, residuals, n_cells, mc_fanos):
     save_mcPCCs = False
     if previously_run:
         try:
@@ -82,11 +70,6 @@ def load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals,
             mcPCCs = calculate_mcPCCs(n_cells, mc_fanos, residuals)
     else:
         mcPCCs = calculate_mcPCCs(n_cells, mc_fanos, residuals)
-    toc = time.perf_counter()
-    if verbose > 1:
-        print(
-            f"Finished calculating modified corrected Pearson correlation coefficients for {mc_fanos.shape[0]} genes in {(toc-tic):04f} seconds."
-        )
         
     return save_mcPCCs,mcPCCs
 

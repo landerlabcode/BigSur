@@ -100,14 +100,8 @@ def calculate_correlations(
     save_mc_fanos, mc_fanos = load_or_calculate_mc_fanos(write_out, previously_run, residuals, n_cells)
 
     toc = time.perf_counter()
-    if verbose > 1:
-        time_diff = toc-tic
-        if time_diff < 60:
-            print(f"Finished calculating modified corrected Fano factors for {mc_fanos.shape[0]} genes in {(time_diff):04f} seconds.")
-        else:
-            print(
-                f"Finished calculating modified corrected Fano factors for {mc_fanos.shape[0]} genes in {(time_diff/60):04f} minutes."
-            )
+
+    timing_print_statement(verbose, g_counts, tic, toc, 'modified corrected Fano factors')
 
     # Store mc_Fano and cv
     if write_out is not None:
@@ -126,20 +120,13 @@ def calculate_correlations(
     # Calculate inverse mcFano moments
     tic = time.perf_counter()
     e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist) # These functions are correct
-
     toc = time.perf_counter()
-    if verbose > 1:
-        time_diff = toc-tic
-        if time_diff < 60:
-            print(
-                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff):04f} seconds."
-            )
-        else:
-            print(
-                f"Finished calculating interpolated moments for {g_counts.shape[0]} genes in {(time_diff/60):04f} minutes."
-            )
+    timing_print_statement(verbose, g_counts, tic, toc, 'interpolated moments')
 
+    tic = time.perf_counter()
     save_kappas, kappa2, kappa3, kappa4, kappa5 = load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments)
+    toc = time.perf_counter()
+    timing_print_statement(verbose, g_counts, tic, toc, 'cumulants')
 
     # Store
     if (write_out is not None) and (store_intermediate_results):
@@ -166,13 +153,16 @@ def calculate_correlations(
 
     # Calculate mcPCCs
     tic = time.perf_counter()
-    save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(verbose, write_out, previously_run, tic, residuals, n_cells, mc_fanos)
+    save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(write_out, previously_run, residuals, n_cells, mc_fanos)
+    toc = time.perf_counter()
+    timing_print_statement(verbose, g_counts, tic, toc, 'modified corrected Pearson correlation coefficients')
 
     del mc_fanos, residuals, e_moments, e_mat
 
+    tic = time.perf_counter()
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
-
-    #np.savez_compressed(write_out + 'mcPCCs_full.npz', mcPCCs=mcPCCs)
+    toc = time.perf_counter()
+    timing_print_statement(verbose, g_counts, tic, toc, 'coefficients')
 
     if write_out is not None:
         if previously_run:
@@ -206,7 +196,10 @@ def calculate_correlations(
         adata.varm["mcPCCs"] = mcPCCs_lower_sparse
     del mcPCCs
 
+    tic = time.perf_counter()
     rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
+    toc = time.perf_counter()
+    timing_print_statement(verbose, g_counts, tic, toc, 'roots')
 
     # For memory purposes, delete all the cumulants that we don't need. This may not have a large impact on memory because the cumulants are simply vectors.
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
@@ -214,16 +207,8 @@ def calculate_correlations(
     tic = time.perf_counter()
     correlation_pvalues = calculate_pvalues(correlation_roots, n_jobs=n_jobs)
     toc = time.perf_counter()
-    if verbose > 1:
-        time_diff = toc-tic
-        if time_diff < 60:
-            print(
-                f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(time_diff):04f} seconds."
-            )
-        else:
-            print(
-                f"Finished calculating p-values for {correlation_roots.shape[0]} correlations in {(time_diff/60):04f} minutes."
-            )
+    timing_print_statement(verbose, g_counts, tic, toc, 'p-values')
+    
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
     # Make new empty matrix
@@ -241,4 +226,16 @@ def calculate_correlations(
         save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular)
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular
+
+def timing_print_statement(verbose, g_counts, tic, toc, calculated_variable):
+    if verbose > 1:
+        time_diff = toc-tic
+        if time_diff < 60:
+            print(
+                f"Finished calculating {calculated_variable} for {g_counts.shape[0]} genes in {(time_diff):04f} seconds."
+            )
+        else:
+            print(
+                f"Finished calculating {calculated_variable} for {g_counts.shape[0]} genes in {(time_diff/60):04f} minutes."
+            )
 

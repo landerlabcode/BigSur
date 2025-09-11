@@ -228,7 +228,6 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
 
     if verbose > 1:
         print("Beginning root finding.", flush=True)
-    tic = time.perf_counter()
     correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
 
     indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
@@ -237,9 +236,6 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if indices_of_not_found_roots.shape[0] != 0:
         derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(2*c2_lower_flat_to_keep[correlation_row], 3*c3_lower_flat_to_keep[correlation_row], 4*c4_lower_flat_to_keep[correlation_row], 5*c5_lower_flat_to_keep[correlation_row]) for correlation_row in indices_of_not_found_roots))
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
-    toc = time.perf_counter()
-    if verbose > 1:
-        print(f"Root finding complete, took {toc - tic:0.4f} seconds.") # old domain, took 27.92s
 
     # # Testing block, delete me
     # roots_matrix  = np.empty((gene_totals.shape[0], gene_totals.shape[0]))
