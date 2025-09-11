@@ -170,7 +170,7 @@ def find_passing_correlations_2(rows, cols, c2, c3, c4, c5, first_pass_cutoff, l
 # Find roots of polynomials for each row
 def find_real_root(*coefs):
     '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
-    p = Polynomial([*coefs], domain=[-3, 3])
+    p = Polynomial([*coefs], domain=[-100, 100])
     complex_roots = p.roots()
     real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
     root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
@@ -229,7 +229,6 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     if verbose > 1:
         print("Beginning root finding.", flush=True)
     tic = time.perf_counter()
-    # Find roots is correct
     correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
 
     indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
