@@ -226,6 +226,8 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     rows_to_keep = rows[indices_to_keep]
     cols_to_keep = cols[indices_to_keep]
 
+    del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat
+
     # # Testing block, delete me
     # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.npz', rows=rows_to_keep, cols=cols_to_keep, indices_to_keep=indices_to_keep)
     # # Testing block, delete me
