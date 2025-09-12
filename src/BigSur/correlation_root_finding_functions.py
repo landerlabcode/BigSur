@@ -234,16 +234,16 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
         print("Beginning root finding.", flush=True)
     correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
 
-    indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
+    indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]#np.where((-5 > correlation_roots) | (correlation_roots > 5))[0]#
 
     # If no real roots are found, find the roots of the derivatives and use those.
     if indices_of_not_found_roots.shape[0] != 0:
         derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(2*c2_lower_flat_to_keep[correlation_row], 3*c3_lower_flat_to_keep[correlation_row], 4*c4_lower_flat_to_keep[correlation_row], 5*c5_lower_flat_to_keep[correlation_row]) for correlation_row in indices_of_not_found_roots))
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
 
-    # Testing block, delete me
-    np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse_domain_-10_10.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
-    # Testing block, delete me
+    # # Testing block, delete me
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse_domain_-10_10.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
+    # # Testing block, delete me
     
     return rows_to_keep, cols_to_keep, #correlation_roots
 
