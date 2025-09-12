@@ -245,7 +245,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse_domain_-10_10.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
     # # Testing block, delete me
     
-    return rows_to_keep, cols_to_keep, #correlation_roots
+    return rows_to_keep, cols_to_keep, correlation_roots
 
 def find_total_umis_of_genes(rows, cols, gene_totals, logvec_to_keep):
     '''This function tests the total UMIs of genes in correlations that passed the first test. If either gene in a correlation has total UMIs ≤ 84, that correlation may not be significant. We test these correlations further in find_passing_correlations_2. If both genes have total UMIs > 84, the correlation is kept for root finding.'''
