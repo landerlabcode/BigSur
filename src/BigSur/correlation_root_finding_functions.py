@@ -170,10 +170,14 @@ def find_passing_correlations_2(rows, cols, c2, c3, c4, c5, first_pass_cutoff, l
 # Find roots of polynomials for each row
 def find_real_root(*coefs):
     '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
-    p = Polynomial([*coefs], ) #domain=[-100, 100]
+    p = Polynomial([*coefs]) #domain=[-100, 100]
     complex_roots = p.roots()
     real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
-    root = np.min(np.abs(real_roots)) if real_roots.size > 0 else np.nan
+    if real_roots.size > 0:
+        root_abs_value = np.min(np.abs(real_roots))
+        root = real_roots[np.abs(real_roots) == root_abs_value][0]
+    else:
+        root = np.nan
     return root
 
 def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, gene_totals, n_jobs = -2, verbose = 1):
@@ -238,10 +242,10 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
 
     # Testing block, delete me
-    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
+    np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse_domain_-10_10.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
     # Testing block, delete me
     
-    return rows_to_keep, cols_to_keep, correlation_roots
+    return rows_to_keep, cols_to_keep, #correlation_roots
 
 def find_total_umis_of_genes(rows, cols, gene_totals, logvec_to_keep):
     '''This function tests the total UMIs of genes in correlations that passed the first test. If either gene in a correlation has total UMIs ≤ 84, that correlation may not be significant. We test these correlations further in find_passing_correlations_2. If both genes have total UMIs > 84, the correlation is kept for root finding.'''
