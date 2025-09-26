@@ -6,6 +6,8 @@ import numexpr as ne
 import warnings
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 ## Numpy
 from numpy.polynomial import Polynomial
@@ -25,6 +27,10 @@ from scipy.interpolate import interp1d
 from scipy.special import erfcinv
 from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
+from scipy.optimize import brentq
+
+### mpmath
+from mpmath import polyroots, mpf, mpc
 
 def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, indices_of_cumulants):
     '''This function tests correlations to see if they pass a series of tests. It returns a boolean array of the correlations that pass all tests.'''
@@ -168,17 +174,27 @@ def find_passing_correlations_2(rows, cols, c2, c3, c4, c5, first_pass_cutoff, l
     return indices_to_keep
 
 # Find roots of polynomials for each row
-def find_real_root(*coefs):
-    '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the absolute value of each root and returns the smallest of these. If there are no real roots, returns NaN.'''
-    p = Polynomial([*coefs]) #domain=[-100, 100]
-    complex_roots = p.roots()
-    real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
-    if real_roots.size > 0:
-        root_abs_value = np.min(np.abs(real_roots))
-        root = real_roots[np.abs(real_roots) == root_abs_value][0]
+def find_real_root(coefs, extraprec=False):
+    '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the value of each root and returns the absolute value of the root that is closest to zero. If there are no real roots, returns NaN.'''
+    if extraprec:
+        try:
+            roots = polyroots([*coefs][::-1], maxsteps=20, extraprec=extraprec)
+            real_roots = [r for r in roots if isinstance(r, mpf)]
+            real_roots = np.array([float(r) for r in real_roots])
+            root_abs_value = np.min(np.abs(real_roots))
+            root = real_roots[np.abs(real_roots) == root_abs_value][0]
+        except:
+            root = np.nan
     else:
-        root = np.nan
-    return root
+        p = Polynomial([*coefs])
+        complex_roots = p.roots()
+        real_roots = complex_roots[np.abs(complex_roots.imag) < 0.00001].real
+        if real_roots.size > 0:
+            root_abs_value = np.min(np.abs(real_roots))
+            root = real_roots[np.abs(real_roots) == root_abs_value][0]
+        else:
+            root = np.nan
+    return np.abs(root)
 
 def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, first_pass_cutoff, gene_totals, n_jobs = -2, verbose = 1):
     '''This function calculates the roots of the Cornish-Fisher expansion for the given correlations. It first limits the calculation of the roots to correlations that pass multiple tests. It then calculates the roots for each correlation that passed using its cumulants.'''
@@ -228,24 +244,65 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
 
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat
 
-    # # Testing block, delete me
+    # Testing block, delete me
     # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.npz', rows=rows_to_keep, cols=cols_to_keep, indices_to_keep=indices_to_keep)
-    # # Testing block, delete me
+    # import pandas as pd
+    # df = pd.DataFrame({'rows': rows_to_keep, 'cols': cols_to_keep, 'indices': indices_to_keep})
+    # df.to_csv('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/indices_passing_final_sparse.csv', index=False)
+    # Testing block, delete me
 
     if verbose > 1:
         print("Beginning root finding.", flush=True)
-    correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
+
+    # First pass: Find roots using a fast, albeit less precise, method.
+    correlation_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]]) for correlation_row in range(c1_lower_flat_to_keep.shape[0])))
+
+    # Second pass: For any roots that are outside of the range -20 to 20, double-check using a more precise method.
+    indices_of_not_found_roots = np.where((-20 > correlation_roots) | (correlation_roots > 20))[0]
+    roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]], extraprec=10) for correlation_row in indices_of_not_found_roots))
+    correlation_roots[indices_of_not_found_roots] = roots_of_not_initially_found_roots
 
     indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]#np.where((-5 > correlation_roots) | (correlation_roots > 5))[0]#
 
     # If no real roots are found, find the roots of the derivatives and use those.
     if indices_of_not_found_roots.shape[0] != 0:
-        derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)(2*c2_lower_flat_to_keep[correlation_row], 3*c3_lower_flat_to_keep[correlation_row], 4*c4_lower_flat_to_keep[correlation_row], 5*c5_lower_flat_to_keep[correlation_row]) for correlation_row in indices_of_not_found_roots))
+        derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c2_lower_flat_to_keep[correlation_row], 2*c3_lower_flat_to_keep[correlation_row], 3*c4_lower_flat_to_keep[correlation_row], 4*c5_lower_flat_to_keep[correlation_row]], extraprec=20) for correlation_row in indices_of_not_found_roots))
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
 
+    # indices_of_not_found_roots = np.append(indices_of_not_found_roots, np.where((correlation_roots < -30) | (correlation_roots > 30))[0])
+
+    # roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c1_lower_flat_to_keep[correlation_row], c2_lower_flat_to_keep[correlation_row], c3_lower_flat_to_keep[correlation_row], c4_lower_flat_to_keep[correlation_row], c5_lower_flat_to_keep[correlation_row]], extraprec=10) for correlation_row in indices_of_not_found_roots))
+
+    # correlation_roots[indices_of_not_found_roots] = roots_of_not_initially_found_roots
+
+    # indices_of_not_found_roots = np.where(np.isnan(correlation_roots))[0]
+    # indices_of_not_found_roots = np.append(indices_of_not_found_roots, np.where((correlation_roots < -30) | (correlation_roots > 30))[0])
+
+    # # indices = np.where(np.isnan(correlation_roots))[0]
+    # for index in indices[:100]:
+    #     coefs = [c1_lower_flat_to_keep[index], c2_lower_flat_to_keep[index], c3_lower_flat_to_keep[index], c4_lower_flat_to_keep[index], c5_lower_flat_to_keep[index]]
+    #     x = np.linspace(-100, 100, 1000)
+    #     y = np.array([coef * x ** order for order, coef in enumerate(coefs)])
+    #     y = y.sum(axis = 0)
+    #     fig, ax = plt.subplots()
+    #     sns.scatterplot(x=x, y=y, s = 5, linewidth = 0, ax=ax)
+    #     ax.axhline(y = 0, linestyle = '--')
+    #     plt.savefig(f'/Users/emmanueldollinger/Desktop/delete_me/test_{index}.png')
+    #     plt.close()
+    #     coefs = [c2_lower_flat_to_keep[index], 2*c3_lower_flat_to_keep[index], 3*c4_lower_flat_to_keep[index], 4*c5_lower_flat_to_keep[index]]
+    #     x = np.linspace(-20, 20, 1000)
+    #     y = np.array([coef * x ** order for order, coef in enumerate(coefs)])
+    #     y = y.sum(axis = 0)
+    #     fig, ax = plt.subplots()
+    #     sns.scatterplot(x=x, y=y, s = 5, linewidth = 0, ax=ax)
+    #     ax.axhline(y = 0, linestyle = '--')
+    #     plt.savefig(f'/Users/emmanueldollinger/Desktop/delete_me/test_{index}_derivative.png')
+    #     plt.close()
     # # Testing block, delete me
-    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse_domain_-10_10.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
-    # # Testing block, delete me
+    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
+    # # # Testing block, delete me
+    # df = pd.DataFrame({'rows': rows_to_keep, 'cols': cols_to_keep, 'roots': correlation_roots})
+    # df.to_csv('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_new.csv', index=False)
     
     return rows_to_keep, cols_to_keep, correlation_roots
 
