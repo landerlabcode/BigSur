@@ -174,11 +174,11 @@ def find_passing_correlations_2(rows, cols, c2, c3, c4, c5, first_pass_cutoff, l
     return indices_to_keep
 
 # Find roots of polynomials for each row
-def find_real_root(coefs, extraprec=False):
+def find_real_root(coefs, extraprec=False, maxsteps = 20):
     '''Find the real root of a polynomial with given coefficients. Considers a root "real" if the imaginary part is smaller than 0.00001. Calculates the value of each root and returns the absolute value of the root that is closest to zero. If there are no real roots, returns NaN.'''
-    if extraprec:
+    if extraprec is not False:
         try:
-            roots = polyroots([*coefs][::-1], maxsteps=20, extraprec=extraprec)
+            roots = polyroots([*coefs][::-1], maxsteps=maxsteps, extraprec=extraprec)
             real_roots = [r for r in roots if isinstance(r, mpf)]
             real_roots = np.array([float(r) for r in real_roots])
             root_abs_value = np.min(np.abs(real_roots))
@@ -266,7 +266,7 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
 
     # If no real roots are found, find the roots of the derivatives and use those.
     if indices_of_not_found_roots.shape[0] != 0:
-        derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c2_lower_flat_to_keep[correlation_row], 2*c3_lower_flat_to_keep[correlation_row], 3*c4_lower_flat_to_keep[correlation_row], 4*c5_lower_flat_to_keep[correlation_row]], extraprec=20) for correlation_row in indices_of_not_found_roots))
+        derivative_roots_of_not_initially_found_roots = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c2_lower_flat_to_keep[correlation_row], 2*c3_lower_flat_to_keep[correlation_row], 3*c4_lower_flat_to_keep[correlation_row], 4*c5_lower_flat_to_keep[correlation_row]], extraprec=20, maxsteps=50) for correlation_row in indices_of_not_found_roots))
         correlation_roots[indices_of_not_found_roots] = derivative_roots_of_not_initially_found_roots
 
     # indices_of_not_found_roots = np.append(indices_of_not_found_roots, np.where((correlation_roots < -30) | (correlation_roots > 30))[0])
@@ -299,10 +299,12 @@ def calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c
     #     plt.savefig(f'/Users/emmanueldollinger/Desktop/delete_me/test_{index}_derivative.png')
     #     plt.close()
     # # Testing block, delete me
-    # np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
-    # # # Testing block, delete me
-    # df = pd.DataFrame({'rows': rows_to_keep, 'cols': cols_to_keep, 'roots': correlation_roots})
-    # df.to_csv('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_new.csv', index=False)
+    #np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots_matrix_sparse.npz', roots = correlation_roots, rows = rows_to_keep, cols = cols_to_keep)
+    # # # # Testing block, delete me
+    #df = pd.DataFrame({'rows': rows_to_keep, 'cols': cols_to_keep, 'roots': correlation_roots})
+    #df.to_csv('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/roots.csv', index=False)
+
+    derivative_roots_of_not_initially_found_roots_test = np.array(Parallel(n_jobs=n_jobs)(delayed(find_real_root)([c2_lower_flat_to_keep[correlation_row], 2*c3_lower_flat_to_keep[correlation_row], 3*c4_lower_flat_to_keep[correlation_row], 4*c5_lower_flat_to_keep[correlation_row]], extraprec=20) for correlation_row in np.where(np.isnan(correlation_roots))[0]))
     
     return rows_to_keep, cols_to_keep, correlation_roots
 
