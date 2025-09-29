@@ -3,6 +3,7 @@ import numpy as np
 
 ### Scipy
 from scipy.interpolate import interp1d
+from scipy.stats import skew, kurtosis
 
 # Functions for inverse square moment interpolation
 def inv_sqrt_moment_interpolation(sample_moments, gene_totals, points):
@@ -64,6 +65,6 @@ def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, sta
     PLN_samples = rng.poisson(rng.lognormal(mean=mu.reshape(1,-1), sigma=sigma), size = (trial, n_cells))
     samples = 1/np.sqrt(np.sum((PLN_samples-sim_emat_subset)**2/(sim_emat_subset+c**2*sim_emat_subset**2), axis = 1)/(n_cells-1))
 
-    results = [np.mean(samples**n) for n in range(2, 6)] # Return the second through 5th moments
+    results = [np.mean(samples**n) for n in range(1, 5)] # Return the first through 4th moments
 
     return(results)
