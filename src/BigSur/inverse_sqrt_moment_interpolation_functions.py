@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 
 # Functions for inverse square moment interpolation
 def inv_sqrt_moment_interpolation(sample_moments, gene_totals, points):
+    '''Interpolate the moments of the inverse square root mcFano factors.'''
     int_moments = np.empty((4, gene_totals.shape[0]))
     for j in range(4):
         approx_func = interp1d(
@@ -19,6 +20,7 @@ def inv_sqrt_moment_interpolation(sample_moments, gene_totals, points):
     e_moments = np.array([np.outer(m, m) for m in int_moments]) # 4 x n_genes x n_genes
     return e_moments
 def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
+    '''Calculate the interpolated moments of the inverse square root mcFano factors.'''
     a = max(2, min(g_counts))
     e = n_cells / 50
     h = max(g_counts)
@@ -29,6 +31,12 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     sim_emat = np.outer(points, normlist) # 8 x n_cells
 
     sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i]) for i in range(points.shape[0])])
+
+    # import pandas as pd
+
+    # sample_moments_R = pd.read_csv("/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_R_testing/inv_correction.csv", index_col = 0).to_numpy()
+
+    # sample_moments_R = sample_moments_R.T
 
     e_moments = inv_sqrt_moment_interpolation(sample_moments, g_counts, points)
 
@@ -41,7 +49,12 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
 
     # e_moments_R = np.array([e_moments_1.to_numpy(), e_moments_2.to_numpy(), e_moments_3.to_numpy(), e_moments_4.to_numpy()])
 
-    return e_moments# e_moments_R #
+    # np.savetxt('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/moment_interp_1.csv', e_moments[0,:,:], delimiter=',')
+    # np.savetxt('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/moment_interp_2.csv', e_moments[1,:,:], delimiter=',')
+    # np.savetxt('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/moment_interp_3.csv', e_moments[2,:,:], delimiter=',')
+    # np.savetxt('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/moment_interp_4.csv', e_moments[3,:,:], delimiter=',')
+
+    return e_moments#e_moments#e_moments_R#e_moments#e_moments#e_moments#e_moments_R#e_moments#e_moments_R#e_moments# e_moments_R#e_moments_R #
 def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed = 0):
     mu = np.log(sim_emat_subset / np.sqrt(1 + c**2))
     sigma = np.sqrt(np.log(1 + c**2))
