@@ -19,7 +19,7 @@ def inv_sqrt_moment_interpolation(sample_moments, gene_totals, points):
         int_moments[j, :] = interpolated
     e_moments = np.array([np.outer(m, m) for m in int_moments]) # 4 x n_genes x n_genes
     return e_moments
-def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
+def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist, starting_seed = 0):
     '''Calculate the interpolated moments of the product of inverse square root mcFano factors.'''
     a = max(2, min(g_counts))
     e = n_cells / 50
@@ -30,7 +30,26 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
 
     sim_emat = np.outer(points, normlist) # 8 x n_cells
 
-    sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i]) for i in range(points.shape[0])])
+    # def generate_many_interpolated_moments(sim_emat, c, n_cells, trials, points):
+
+    #     rng = np.random.default_rng(0)
+
+    #     e_moments_all = np.empty((20, 4, g_counts.shape[0], g_counts.shape[0])) # 20 sets of moments
+
+    #     for i in range(20):
+    #         starting_seed = rng.integers(0, 1e6, size=1)[0]
+
+    #         sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i], starting_seed=starting_seed) for i in range(points.shape[0])])
+
+    #         e_moments = inv_sqrt_moment_interpolation(sample_moments, g_counts, points)
+
+    #         e_moments_all[i,:,:,:] = e_moments
+
+    #     np.savez_compressed('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/many_moments.npz', e_moments_all=e_moments_all)
+
+    # generate_many_interpolated_moments(sim_emat, c, n_cells, trials, points) 
+
+    sample_moments = np.array([simulate_inverse_sqrt_mcfano_moments(sim_emat[i,:], c, n_cells, trials[i], starting_seed=starting_seed) for i in range(points.shape[0])])
 
     #import pandas as pd
 
@@ -55,16 +74,33 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist):
     # np.savetxt('/Users/emmanueldollinger/Documents/Projects/Pipeline_development/Data/results/lymph_nodes/correlations/correlations_python_testing/moment_interp_4.csv', e_moments[3,:,:], delimiter=',')
 
     return e_moments#e_moments#e_moments_R#e_moments#e_moments#e_moments#e_moments_R#e_moments#e_moments_R#e_moments# e_moments_R#e_moments_R #
-def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed = 0):
+def simulate_inverse_sqrt_mcfano_moments(sim_emat_subset, c, n_cells, trial, starting_seed):
     '''Simulate inverse square root mcFano factors and calculate their moments.'''
     mu = np.log(sim_emat_subset / np.sqrt(1 + c**2))
-    sigma = np.sqrt(np.log(1 + c**2)) # This is std
-
+    sigma = np.sqrt(np.log(1 + c**2))
+    
     rng = np.random.default_rng(starting_seed)
 
-    PLN_samples = rng.poisson(rng.lognormal(mean=mu.reshape(1,-1), sigma=sigma), size = (trial, n_cells)) # gene x cells?
-    samples = 1/np.sqrt(np.sum((PLN_samples-sim_emat_subset)**2/(sim_emat_subset+c**2*sim_emat_subset**2), axis = 1)/(n_cells-1))
+    # PLN_samples = rng.poisson(rng.lognormal(mean=mu.reshape(1,-1), sigma=sigma), size = (trial, n_cells)) # gene x cells?
+    # samples = 1/np.sqrt(np.sum((PLN_samples-sim_emat_subset)**2/(sim_emat_subset+c**2*sim_emat_subset**2), axis = 1)/(n_cells-1))
 
-    results = [np.mean(samples**n) for n in range(1, 5)] # Return the first through 4th moments
+    # results = [np.mean(samples**n) for n in range(1, 5)] # Return the first through 4th moments
+
+    samples = np.zeros(trial)
+    
+    for t in range(trial):
+        pois_samples = np.zeros(n_cells)
+        for y in range(n_cells):
+            # Sample Poisson mean from lognormal
+            rate = rng.lognormal(mean=mu[y], sigma=sigma)
+            # Sample Poisson
+            pois_samples[y] = rng.poisson(rate)
+        
+        # Compute inverse sqrt mcFano factor for this trial
+        numerator = np.sum((pois_samples - sim_emat_subset)**2 / (sim_emat_subset + c**2 * sim_emat_subset**2))
+        samples[t] = 1 / np.sqrt(numerator / (n_cells - 1))
+    
+    # Compute the first 4 moments
+    results = [np.mean(samples**n) for n in range(1, 5)]
 
     return(results)
