@@ -1,6 +1,5 @@
 import numpy as np
 import mpmath
-import time
 
 ## Scipy
 from scipy.stats import norm
@@ -10,6 +9,7 @@ from joblib import Parallel, delayed
 
 
 def calculate_pvalues(correlation_roots, n_jobs = -2):
+    '''Calculate p-values from correlation roots.'''
     print("Estimating p-values.")
     p = norm.logcdf(correlation_roots)
     p_mpfr = -np.log10(-p / np.log(10))
@@ -25,7 +25,7 @@ def calculate_pvalues(correlation_roots, n_jobs = -2):
     return p_values
 
 def BH_correction(p_values, num_genes):
-    '''Perform Benjamini-Hochberg correction on p-values.'''
+    '''Do Benjamini-Hochberg correction on p-values.'''
     indices_of_smallest_to_greatest_p_values = p_values.argsort()
     recovery_index = np.argsort(indices_of_smallest_to_greatest_p_values)
     sorted_pvals = p_values[indices_of_smallest_to_greatest_p_values]

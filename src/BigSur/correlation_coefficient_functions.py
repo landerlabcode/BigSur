@@ -48,9 +48,9 @@ def load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts,
         else:
             print('Coefficients file not found, recalculating.')
             save_coefficients = True
-            rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs) # These functions are correct
+            rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs)
     else:
-        rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs) # These functions are correct
+        rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = calculate_mcPCCs_coefficients(kappa2, kappa3, kappa4, kappa5, mcPCCs)
             
     return save_coefficients,rows,cols,c1_lower_flat,c2_lower_flat,c3_lower_flat,c4_lower_flat,c5_lower_flat
 

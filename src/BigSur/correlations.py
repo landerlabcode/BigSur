@@ -1,35 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from typing import Union, Iterable
+from typing import Union
 import time
 import numpy as np
-import mpmath
-import numexpr as ne
 import warnings
-import pandas as pd
 import os
-
-## Numpy
-from numpy.polynomial import Polynomial
 
 ## Anndata
 from anndata import AnnData
-from mpmath import ncdf, exp
-
-## statsmodels
-from statsmodels.stats.multitest import fdrcorrection
-
-## Joblib
-from joblib import Parallel, delayed
 
 ### Scipy
-from scipy.interpolate import interp1d
-from scipy.special import erfcinv
-from scipy.stats import norm
 from scipy.sparse import csr_matrix, save_npz
+from scipy.io import mmwrite
 
-from .preprocessing import make_vars_and_qc, calculate_residuals, fit_cv, calculate_mcfano, calculate_emat
+# Load BigSur functions
+from .preprocessing import make_vars_and_qc, fit_cv
 from .correlation_coefficient_functions import load_or_calculate_residuals, load_or_calculate_mc_fanos, load_or_calculate_mcpccs, load_or_calculate_coefficients
 from .correlation_cumulant_functions import load_or_calculate_cumulants
 from .inverse_sqrt_moment_interpolation_functions import inverse_sqrt_mcfano_correction
@@ -75,7 +61,7 @@ def calculate_correlations(
     mcPCCs_significant = mcPCCs.copy()
     mcPCCs_significant[BH_corrected_pvalues > 0.05] = 0 # Threshold mcPCCs to those that have BH-corrected p-values <= 0.05
     mcPCCs_significant_symmetrical = mcPCCs_significant + mcPCCs_significant.T # If necessary, calculate the mcPCCs symmetrical matrix by adding the lower triangular matrix to its transpose.
-
+    -------
     '''
 
     # Setup
@@ -126,7 +112,7 @@ def calculate_correlations(
     tic = time.perf_counter()
     save_kappas, kappa2, kappa3, kappa4, kappa5 = load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'cumulants', kappa2.shape[0]**2, tic, toc)
+    timing_print_statement(verbose, 'cumulants', (kappa2.shape[0]**2 - kappa2.shape[0])/2, tic, toc, 'correlations')
 
     # Store
     if (write_out is not None) and (store_intermediate_results):
@@ -155,14 +141,14 @@ def calculate_correlations(
     tic = time.perf_counter()
     save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(write_out, previously_run, residuals, n_cells, mc_fanos)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'modified corrected Pearson correlation coefficients', mcPCCs.shape[0]**2, tic, toc)
+    timing_print_statement(verbose, 'modified corrected Pearson correlation coefficients', (mcPCCs.shape[0]**2 - mcPCCs.shape[0])/2, tic, toc)
 
     del mc_fanos, residuals, e_moments, e_mat
 
     tic = time.perf_counter()
     save_coefficients, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat = load_or_calculate_coefficients(verbose, write_out, previously_run, g_counts, mcPCCs, kappa2, kappa3, kappa4, kappa5)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'coefficients', c1_lower_flat.shape[0], tic, toc)
+    timing_print_statement(verbose, 'coefficients', c1_lower_flat.shape[0], tic, toc, 'correlations')
 
     if write_out is not None:
         if previously_run:
@@ -172,7 +158,6 @@ def calculate_correlations(
                 # Convert mcPCCs to lower triangular
                 mcPCCs_lower = np.tril(mcPCCs, -1)
                 mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
-                save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if save_coefficients and (store_intermediate_results):
                 if verbose > 1:
                     print('Writing coefficients to disk.', flush = True)
@@ -194,12 +179,13 @@ def calculate_correlations(
         mcPCCs_lower = np.tril(mcPCCs, -1)
         mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
         adata.varm["mcPCCs"] = mcPCCs_lower_sparse
+    
     del mcPCCs
 
     tic = time.perf_counter()
     rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'roots', correlation_roots.shape[0], tic, toc)
+    timing_print_statement(verbose, 'roots', correlation_roots.shape[0], tic, toc, 'correlations')
 
     # For memory purposes, delete all the cumulants that we don't need. This may not have a large impact on memory because the cumulants are simply vectors.
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
@@ -207,7 +193,7 @@ def calculate_correlations(
     tic = time.perf_counter()
     correlation_pvalues = calculate_pvalues(correlation_roots, n_jobs=n_jobs)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'p-values', correlation_pvalues.shape[0], tic, toc)
+    timing_print_statement(verbose, 'p-values', correlation_pvalues.shape[0], tic, toc, 'correlations')
     
     BH_corrected_pvalues = BH_correction(correlation_pvalues, adata.shape[1])
 
@@ -227,15 +213,17 @@ def calculate_correlations(
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular
 
-def timing_print_statement(verbose, calculated_variable, counts_of_calculated_variable, tic, toc):
+    mmwrite(write_out + 'BH_corrected_pvalues.mtx', matrix_reconstructed_lower_triangular)
+
+def timing_print_statement(verbose, calculated_variable, counts_of_calculated_variable, tic, toc, variable_type = 'genes'):
     if verbose > 1:
         time_diff = toc-tic
         if time_diff < 60:
             print(
-                f"Finished calculating {calculated_variable} for {counts_of_calculated_variable} genes in {(time_diff):04f} seconds."
+                f"Finished calculating {calculated_variable} for {counts_of_calculated_variable} {variable_type} in {(time_diff):04f} seconds."
             )
         else:
             print(
-                f"Finished calculating {calculated_variable} for {counts_of_calculated_variable} genes in {(time_diff/60):04f} minutes."
+                f"Finished calculating {calculated_variable} for {counts_of_calculated_variable} {variable_type} in {(time_diff/60):04f} minutes."
             )
 
