@@ -22,7 +22,7 @@ def find_passing_correlations_1(rows, cols, c1_lower_flat, c2_lower_flat, c3_low
     def testfunc_2(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat):
         return c1_lower_flat * testfunc_1(x, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
 
-    # Compute cut.vec for both pos and neg cut
+    # Compute cut.vec for both pos and neg cut. This tests if there is a root between -cut and cut. If so, the root will translate to a non-significant correlation, and so not calculated. 
     cut_vec_1 = testfunc_1(cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_vec_2 = testfunc_1(-cut, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat)
     cut_bool = ~(cut_vec_1 * cut_vec_2 < 0)# return False if both are negative
