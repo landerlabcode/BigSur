@@ -32,6 +32,7 @@ def calculate_correlations(
         previously_run: bool = False, 
         store_intermediate_results: bool = False,
         n_jobs: int = -2,
+        starting_seed: int = 0,
         verbose: int = 1):
     '''Calculate modified corrected Pearson correlation coefficients (mcPCCs) and Benjamini-Hochberg (BH) corrected p-values for each gene pair in the dataset.
 
@@ -44,6 +45,7 @@ def calculate_correlations(
     previously_run - Bool, if True, the function will attempt to load previously calculated results from the write_out directory.
     store_intermediate_results - Bool, if True, intermediate results will be saved to disk.
     n_jobs - Int, how many cores to use for p-value parallelization. Default is -2 (all but 1 core).
+    starting_seed - Int, random seed for moment interpolation. Default is 0.
     verbose - Int, whether to print computations. 0 is no verbose, 1 is a little (what the function is doing) and 2 is full verbose.
 
     Returns
@@ -105,14 +107,14 @@ def calculate_correlations(
 
     # Calculate inverse mcFano moments
     tic = time.perf_counter()
-    e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist) # These functions are correct
+    e_moments = inverse_sqrt_mcfano_correction(n_cells, g_counts, cv, normlist, starting_seed = starting_seed)
     toc = time.perf_counter()
     timing_print_statement(verbose, 'interpolated moments', g_counts.shape[0], tic, toc)
 
     tic = time.perf_counter()
     save_kappas, kappa2, kappa3, kappa4, kappa5 = load_or_calculate_cumulants(verbose, cv, write_out, previously_run, g_counts, residuals, e_mat, e_moments)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'cumulants', (kappa2.shape[0]**2 - kappa2.shape[0])/2, tic, toc, 'correlations')
+    timing_print_statement(verbose, 'cumulants', int((kappa2.shape[0]**2 - kappa2.shape[0])/2), tic, toc, 'correlations')
 
     # Store
     if (write_out is not None) and (store_intermediate_results):
@@ -141,7 +143,7 @@ def calculate_correlations(
     tic = time.perf_counter()
     save_mcPCCs, mcPCCs = load_or_calculate_mcpccs(write_out, previously_run, residuals, n_cells, mc_fanos)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'modified corrected Pearson correlation coefficients', (mcPCCs.shape[0]**2 - mcPCCs.shape[0])/2, tic, toc)
+    timing_print_statement(verbose, 'modified corrected Pearson correlation coefficients', int((mcPCCs.shape[0]**2 - mcPCCs.shape[0])/2), tic, toc)
 
     del mc_fanos, residuals, e_moments, e_mat
 
@@ -172,7 +174,8 @@ def calculate_correlations(
             mcPCCs_lower_sparse = csr_matrix(mcPCCs_lower)
             save_npz(write_out + 'mcPCCs.npz', mcPCCs_lower_sparse)
             if store_intermediate_results:
-                print('Writing coefficients to disk.', flush = True)
+                if verbose > 1:
+                    print('Writing coefficients to disk.', flush = True)
                 np.savez_compressed(write_out + 'coefficients.npz', rows=rows, cols=cols, c1_lower_flat=c1_lower_flat, c2_lower_flat=c2_lower_flat, c3_lower_flat=c3_lower_flat, c4_lower_flat=c4_lower_flat, c5_lower_flat=c5_lower_flat)
     else:
         # Convert mcPCCs to lower triangular
@@ -183,15 +186,15 @@ def calculate_correlations(
     del mcPCCs
 
     tic = time.perf_counter()
-    rows_to_keep, cols_to_keep, correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
+    rows_to_keep, cols_to_keep, abs_correlation_roots = calculate_mcPCCs_CF_roots(adata, rows, cols, c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat, 2, g_counts, n_jobs=n_jobs, verbose=verbose)
     toc = time.perf_counter()
-    timing_print_statement(verbose, 'roots', correlation_roots.shape[0], tic, toc, 'correlations')
+    timing_print_statement(verbose, 'roots', abs_correlation_roots.shape[0], tic, toc, 'correlations')
 
     # For memory purposes, delete all the cumulants that we don't need. This may not have a large impact on memory because the cumulants are simply vectors.
     del c1_lower_flat, c2_lower_flat, c3_lower_flat, c4_lower_flat, c5_lower_flat,
 
     tic = time.perf_counter()
-    correlation_pvalues = calculate_pvalues(correlation_roots, n_jobs=n_jobs)
+    correlation_pvalues = calculate_pvalues(abs_correlation_roots, n_jobs=n_jobs)
     toc = time.perf_counter()
     timing_print_statement(verbose, 'p-values', correlation_pvalues.shape[0], tic, toc, 'correlations')
     
