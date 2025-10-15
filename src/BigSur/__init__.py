@@ -1,2 +1,2 @@
-__all__ = ['feature_selection', 'synthetic_data']
+__all__ = ['feature_selection', 'synthetic_data', 'correlations']
 
