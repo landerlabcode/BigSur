@@ -24,7 +24,7 @@ def inverse_sqrt_mcfano_correction(n_cells, g_counts, c, normlist, starting_seed
     e = n_cells / 50
     h = max(g_counts)
     points = np.array([a, a * (e / a) ** (1 / 4), a * (e / a) ** (1 / 2), a * (e / a) ** (3 / 4), e, e * (h / e) ** (1 / 3), e * (h / e) ** (2 / 3), h], dtype=int) # 8 points
-    trials = 4*10**7/(n_cells*(np.log10(points)**(1/5)+0.5*np.log10(points)**3))
+    trials = 20*(4*10**7/(n_cells*(np.log10(points)**(1/5)+0.5*np.log10(points)**3))) # This formula determines the number of trials based on gene expression level -- the number of simulat
     trials = trials.astype(int) # convert to ints
 
     sim_emat = np.outer(points, normlist) # 8 x n_cells 
