@@ -216,8 +216,6 @@ def calculate_correlations(
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular
 
-    mmwrite(write_out + 'BH_corrected_pvalues.mtx', matrix_reconstructed_lower_triangular)
-
 def timing_print_statement(verbose, calculated_variable, counts_of_calculated_variable, tic, toc, variable_type = 'genes'):
     if verbose > 1:
         time_diff = toc-tic
