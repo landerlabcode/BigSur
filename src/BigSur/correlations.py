@@ -50,7 +50,8 @@ def calculate_correlations(
 
     Returns
     -------
-    If write_out is true, the mcPCCs and BH-corrected p-values will be saved to the specified directory (write_out). Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant (and therefore not calculated) are stored as 1's. 
+    If write_out is a string, the mcPCCs and BH-corrected p-values will be saved to the specified directory (write_out). Both the mcPCC and BH-corrected p-value matrices are lower triangular with zeros on the diagonal. Since the pipeline just calculates p-values of correlations that are likely to be significant, the BH p-values of the correlations that are judged to be likely non-significant (and therefore not calculated) are stored as 1's. 
+    If write_out is None, the mcPCCs and BH-corrected p-values will be stored in the AnnData object as `adata.varm['mcPCCs']` and `adata.varm['BH_corrected_pvalues']`, respectively.
 
     Example
     -------
