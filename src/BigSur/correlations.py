@@ -6,6 +6,7 @@ import time
 import numpy as np
 import warnings
 import os
+import pandas as pd
 
 ## Anndata
 from anndata import AnnData
@@ -214,7 +215,7 @@ def calculate_correlations(
         if verbose > 1:
             print('Writing BH corrected p-values to disk.', flush = True)
         save_npz(write_out + 'BH_corrected_pvalues.npz', matrix_reconstructed_lower_triangular)
-        adata.var.index.to_csv(write_out + 'gene_names.csv')
+        pd.Series(adata.var.index).to_csv(write_out + 'gene_names.csv')
     else:
         adata.varm["BH-corrected p-values of mcPCCs"] = matrix_reconstructed_lower_triangular
 
