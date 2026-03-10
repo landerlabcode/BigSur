@@ -7,6 +7,9 @@ Basic Informatics and Gene Statistics from Unnormalized Reads (BigSur) is an ana
 * The pitfalls of using Pearson's Correlation Coefficients (PCCs) to calculate correlations in scRNA-seq data and the corrections made to PCCs to account for the noise and sparsity in these data are shown in [Silkwood et al. 2023](https://doi.org/10.1186/s12859-024-05926-z).
 
 # Updates 
+## 03/10/25
+Pip package has been updated with the correlation code. 
+
 ## 10/15/25
 The GitHub repository now includes the code to calculate correlations. See below for the quickstart. The tutorial for the correlations will be uploaded soon. The pip package does not currently include the correlations code.
 
