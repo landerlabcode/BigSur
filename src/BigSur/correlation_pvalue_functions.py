@@ -7,6 +7,9 @@ from scipy.stats import norm
 ## Joblib
 from joblib import Parallel, delayed
 
+def robust_pvalue(correlation_root):
+        p_value = float(mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (mpmath.power(mpmath.mpf(correlation_root), 2)) / 2)), 15))
+        return p_value
 
 def calculate_pvalues(correlation_roots, n_jobs = -2):
     '''Calculate p-values from correlation roots.'''
@@ -14,10 +17,6 @@ def calculate_pvalues(correlation_roots, n_jobs = -2):
     p = norm.logcdf(correlation_roots)
     p_mpfr = -np.log10(-p / np.log(10))
     p_mpfr[correlation_roots < 8.2] = -np.log10(1 - np.exp(p[correlation_roots < 8.2]))
-
-    def robust_pvalue(correlation_root):
-        p_value = float(mpmath.nstr(-mpmath.log10(0.5 * mpmath.exp(- (mpmath.power(mpmath.mpf(correlation_root), 2)) / 2)), 15))
-        return p_value
     
     p_mpfr[correlation_roots >= 38.4] = np.array(Parallel(n_jobs=n_jobs)(delayed(robust_pvalue)(correlation_roots[correlation_row]) for correlation_row in np.where(correlation_roots >= 38.4)[0]))
 
