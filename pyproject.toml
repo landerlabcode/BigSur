@@ -1,7 +1,7 @@
 # pyproject.toml for bigsur
 [project]
 name = "bigsur"
-version = "0.0.6"
+version = "0.0.8"
 authors = [
   { name="Emmanuel Dollinger", email="edolling@uci.edu" },
 ]

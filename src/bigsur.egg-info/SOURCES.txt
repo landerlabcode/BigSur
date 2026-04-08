@@ -4,7 +4,13 @@ pyproject.toml
 setup.cfg
 setup.py
 src/BigSur/__init__.py
+src/BigSur/correlation_coefficient_functions.py
+src/BigSur/correlation_cumulant_functions.py
+src/BigSur/correlation_pvalue_functions.py
+src/BigSur/correlation_root_finding_functions.py
+src/BigSur/correlations.py
 src/BigSur/feature_selection.py
+src/BigSur/inverse_sqrt_moment_interpolation_functions.py
 src/BigSur/preprocessing.py
 src/BigSur/synthetic_data.py
 src/bigsur.egg-info/PKG-INFO
